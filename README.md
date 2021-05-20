@@ -16,6 +16,8 @@ List of dependencies:
 
 Use `npm install` to install all the dependenices. 
 
+You can delete the `.github` folder. It is not required and only used for this repository's maintenance 
+
 ## Customizing `config.JSON`
 ### Bot Token
 Replace `YOUR_BOT_TOKEN` with the actual token of your bot. If you don't know how to get your bot's token, [read this](https://www.writebots.com/discord-bot-token/).
