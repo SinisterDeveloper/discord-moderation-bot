@@ -20,7 +20,7 @@ module.exports = {
 			data.push(commands.map(command => command.name).join('\n')); //We map all the available commands
 			mainEmbed.addField(`Commands`, `\`${data}\``);
 
-			message.lineReplyNoMention(mainEmbed)
+			message.channel.send(mainEmbed)
 			return
 		}
 		
@@ -29,7 +29,7 @@ module.exports = {
 
 
 		if (!command) { // We check if the argument provided is a valid command or alias
-			return message.lineReply('Please provide a valid command.');
+			return message.reply('Please provide a valid command.');
 		}
 		let commandEmbed = new Discord.MessageEmbed()
 			.setTitle(`Command - ` + command.name)
@@ -43,6 +43,6 @@ module.exports = {
 
 		commandEmbed.addField(`Cooldown`, `${command.cooldown || defaultCooldown} second(s)`);
 
-		await message.lineReplyNoMention(commandEmbed);
+		await message.channel.send(commandEmbed);
 	},
 };
