@@ -3,7 +3,6 @@ const Discord = require('discord.js');
 const { prefix, token, defaultCooldown } = require('./config.json');
 
 const client = new Discord.Client();
-require(`discord-reply`);
 client.commands = new Discord.Collection();
 client.cooldowns = new Discord.Collection();
 
