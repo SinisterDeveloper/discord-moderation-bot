@@ -58,6 +58,8 @@ When I first started out, I used [repl.it](https://replit.com/~) to host my smal
 ### **[Heroku](https://dashboard.heroku.com/)**
 Heroku is designed to run web applications made with Flask, Django etc but it is possible to host the bot there if it doesn't require too many resources. I haven't used Heroku before, but you can read about it [here](https://anidiots.guide/hosting/heroku)
 
+<img src="https://invidget.switchblade.xyz/ZbT8z2SsDp" />
+
 
 
 
