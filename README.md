@@ -42,7 +42,11 @@ node .
 The bot should come online within a few seconds if you did the above steps correctly.
 
 # Support
-If you need help, kindly open an issue and I'll help, alternatively you can DM me on Discord `SinisterDev#2006`. But opening an issue would be better
+If you need help, kindly open an issue and I'll help, alternatively you can DM me on Discord `SinisterDev#2006`. But opening an issue would be better.
+If you aren't able to send me a friend request, join the server below and DM me directly.
+<a href="https://discord.gg/ZbT8z2SsDp ">
+  <img src="https://invidget.switchblade.xyz/ZbT8z2SsDp" />
+</a>
 
 # Contributions
 I am always open to contributions! If you feel anything is missing, or you want to add a command/feature, please open a Pull Request.
@@ -58,7 +62,6 @@ When I first started out, I used [repl.it](https://replit.com/~) to host my smal
 ### **[Heroku](https://dashboard.heroku.com/)**
 Heroku is designed to run web applications made with Flask, Django etc but it is possible to host the bot there if it doesn't require too many resources. I haven't used Heroku before, but you can read about it [here](https://anidiots.guide/hosting/heroku)
 
-<img src="https://invidget.switchblade.xyz/ZbT8z2SsDp" />
 
 
 
