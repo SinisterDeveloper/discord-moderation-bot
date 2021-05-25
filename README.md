@@ -1,5 +1,5 @@
 # discord-moderation-bot
-### A customizable moderation bot made by SinisterDev to help Discord users, whether they are developers or normal users who want to improve their server
+### A customizable moderation bot made by [SinisterDev](https://discord.com/users/778140362790404158) to help Discord users, whether they are developers or normal users who want to improve their server
 
 # Setup - Very Important
 ## Prerequisites
