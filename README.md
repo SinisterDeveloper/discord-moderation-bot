@@ -1,3 +1,5 @@
+[![CodeFactor](https://www.codefactor.io/repository/github/sinisterdeveloper/discord-moderation-bot/badge)](https://www.codefactor.io/repository/github/sinisterdeveloper/discord-moderation-bot)
+
 # discord-moderation-bot
 ### A customizable moderation bot made by [SinisterDev](https://discord.com/users/778140362790404158) to help Discord users, whether they are developers or normal users who want to improve their server
 
@@ -43,10 +45,6 @@ The bot should come online within a few seconds if you did the above steps corre
 
 # Support
 If you need help, kindly open an issue and I'll help, alternatively you can DM me on Discord `SinisterDev#2006`. But opening an issue would be better.
-If you aren't able to send me a friend request, join the server below and DM me directly.
-<a href="https://discord.gg/ZbT8z2SsDp ">
-  <img src="https://invidget.switchblade.xyz/ZbT8z2SsDp" />
-</a>
 
 # Contributions
 I am always open to contributions! If you feel anything is missing, or you want to add a command/feature, please open a Pull Request.
