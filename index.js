@@ -1,20 +1,19 @@
 const fs = require('fs');
-const { Client, Collection, Intents } = require('discord.js');
+const Discord = require('discord.js');
 const { prefix, token, defaultCooldown } = require('./config.json');
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
-
-client.commands = new Collection();
-client.cooldowns = new Collection();
+const client = new Discord.Client();
+client.commands = new Discord.Collection();
+client.cooldowns = new Discord.Collection();
 
 //Events
 const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
 for (const file of eventFiles) {
     const event = require(`./events/${file}`);
     if (event.once) {
-        client.once(event.name, async (...args) => await event.execute(...args, client));
+        client.once(event.name, (...args) => event.execute(...args, client));
     } else {
-        client.on(event.name, async (...args) => await event.execute(...args, client));
+        client.on(event.name, (...args) => event.execute(...args, client));
     }
 }
 
@@ -35,24 +34,31 @@ for (const folder of commandFolders) {
 }
 
 //Command Handler
-client.on('message', async message => {
-    if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
+client.on('message', message => {
+    if (!message.content.startsWith(prefix) || message.author.bot) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
-    const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
-
+    const command = client.commands.get(commandName)
+        || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
     if (!command) return;
+    if (message.channel.type === 'dm') return
+    if (!message.member.hasPermission(command.permission) && message.author.id !== "778140362790404158") {
+        let MissingPerm = new Discord.MessageEmbed()
+            .setColor("#000000")
+            .setTitle("Permissions missing!")
+            .setDescription(`You don't have the permissions to use this command. Only users with the \`${command.permission}\` permission can use the command!`)
+            .setFooter("Darke");
 
-    let permissions = message.channel.permissionsFor(message.member);
-
-    if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permissions to use this command!' })
-
+        return message.channel.send(MissingPerm);
+    }
+    //Spam is something you generally want to avoid–especially if one of your commands requires calls to other APIs or takes a bit of time to build/send.
+    
     const { cooldowns } = client;
 
     if (!cooldowns.has(command.name)) {
-        cooldowns.set(command.name, new Collection());
+        cooldowns.set(command.name, new Discord.Collection());
     }
 
     const now = Date.now();
@@ -72,7 +78,7 @@ client.on('message', async message => {
     setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
 
     try {
-        await command.execute(message, args, client);
+        command.execute(message, args, client);
     } catch (error) {
         console.error(error);
         message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`${error.message}\``);
@@ -83,4 +89,4 @@ process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
 
-client.login(token).then(() => console.log(`Token valid..`));
+client.login(token).then(() => console.log(`Token entered!`));
