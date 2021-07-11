@@ -2,7 +2,7 @@ const fs = require('fs');
 const { Client, Collection, Intents } = require('discord.js');
 const { prefix, token, defaultCooldown } = require('./config.json');
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
+const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS] });
 
 client.commands = new Collection();
 client.cooldowns = new Collection();
@@ -67,7 +67,7 @@ client.on('message', async message => {
             return message.reply(`Please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
         }
     }
-    //If the author has already used this command in this session, get the timestamp, calculate the expiration time and inform the user of the amount of time they need to wait before using this command again.
+
     timestamps.set(message.author.id, now);
     setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
 
@@ -75,8 +75,8 @@ client.on('message', async message => {
         await command.execute(message, args, client);
     } catch (error) {
         console.error(error);
-        await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`${error.message}\``);
-    } //End Of Command Setup
+        await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack}\`\`\``);
+    }
 });
 
 process.on('unhandledRejection', error => {
