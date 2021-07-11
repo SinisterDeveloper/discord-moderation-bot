@@ -77,7 +77,7 @@ client.on('messageCreate', async message => {
         await command.execute(message, args, client);
     } catch (error) {
         console.error(error);
-        await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack}\`\`\``);
+        await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);
     }
 });
 

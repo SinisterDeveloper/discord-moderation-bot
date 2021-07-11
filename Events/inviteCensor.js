@@ -1,6 +1,7 @@
 module.exports = {
     name: `messageCreate`,
     async execute(message) {
+        if (message.author.bot || !message.guild) return
         if (message.channel.permissionsFor(message.member).has(`ADMINISTRATOR`)) return //Checks if the member is server admin
 
         const { guild, content } = message;
