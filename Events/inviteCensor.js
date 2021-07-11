@@ -1,5 +1,5 @@
 module.exports = {
-    name: `message`,
+    name: `messageCreate`,
     async execute(message) {
         if (message.channel.permissionsFor(message.member).has(`ADMINISTRATOR`)) return //Checks if the member is server admin
 

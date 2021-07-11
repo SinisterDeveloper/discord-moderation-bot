@@ -2,7 +2,7 @@ const fs = require('fs');
 const { Client, Collection, Intents } = require('discord.js');
 const { prefix, token, defaultCooldown } = require('./config.json');
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS] });
+const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
 
 client.commands = new Collection();
 client.cooldowns = new Collection();
@@ -18,8 +18,6 @@ for (const file of eventFiles) {
     }
 }
 
-
-//Commands
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
@@ -35,10 +33,14 @@ for (const folder of commandFolders) {
 }
 
 //Command Handler
-client.on('message', async message => {
+client.on('messageCreate', async message => {
     if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const args = message.content
+	    .slice(prefix.length)
+	    .trim()
+	    .split(/ +/);
+
     const commandName = args.shift().toLowerCase();
 
     const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
@@ -83,4 +85,5 @@ process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
 
-client.login(token).then(() => console.log(`Token entered!`));
+client.login(token)
+	.then(() => console.log(`Valid token..`));

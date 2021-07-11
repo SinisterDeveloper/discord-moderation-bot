@@ -4,12 +4,14 @@ module.exports = {
     name: 'ping',
     description: 'Check the bot latency',
     cooldown: 3,
+	aliases: ['latency'],
     permission: `SEND_MESSAGES`,
     usage: prefix + this.name,
     async execute(message) {
-        await message.channel.send({ content: 'Pong!' }).then(resultMessage => {
-            const ping = resultMessage.createdTimestamp - message.createdTimestamp
-            resultMessage.edit({ content: `Pong! \`${ping}ms\`` });
-        });
+        message.reply({ content: 'Pong!', allowedMentions: { repliedUser: false } })
+	        .then(resultMessage => {
+                const ping = resultMessage.createdTimestamp - message.createdTimestamp
+                resultMessage.edit({ content: `Pong! \`${ping}ms\`` });
+            });
     },
 };
