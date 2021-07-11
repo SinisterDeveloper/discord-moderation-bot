@@ -1,10 +1,7 @@
-const Discord = require(`discord.js`);
-
 module.exports = {
     name: `message`,
     async execute(message) {
-
-        if (message.member.hasPermission(`ADMINISTRATOR`)) return //Checks if the member is server admin
+        if (message.channel.permissionsFor(message.member).has(`ADMINISTRATOR`)) return //Checks if the member is server admin
 
         const { guild, content } = message;
 
@@ -29,15 +26,19 @@ module.exports = {
         if (content.includes('discord.gg/')) {
 
             const isOurInvite = await isInvite(guild, code)
-        
+
             if (!isOurInvite) {
                 await message.delete();
-                await message.channel.send(`Invite links are not allowed here ${message.member}.`).then(resultMessage => {
+                await message.channel.send({ content: `Invite links are not allowed here ${message.member}.` })
+                    .then(resultMessage => {
                     function sleep(ms) {
                         return new Promise(
                             resolve => setTimeout(resolve, ms));
                     }
-                    sleep(5000).then(() => { resultMessage.delete(); });
+                    sleep(5000)
+                        .then(() => {
+                            resultMessage.delete();
+                        });
                 });
             }
         }
