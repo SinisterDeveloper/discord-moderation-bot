@@ -3,7 +3,7 @@ const EMBEDS = require(`../../assets/Static/embeds`);
 
 module.exports = {
 	name: 'ban',
-	description: 'Check the bot latency',
+	description: 'Ban members from your server',
 	cooldown: 3,
 	aliases: ['ipban'],
 	permission: `SEND_MESSAGES`,
@@ -23,7 +23,7 @@ module.exports = {
 		const reason = args.slice(1).join(' ') || 'No reason specified';
 
 		let banNotificationDM = EMBEDS.moderationCommands.punishNotificationDM;
-		banNotificationDM.setDescription(`You were banned in **${message.guild.name}** for: ${reason}`);
+		banNotificationDM.setDescription(`You were banned from **${message.guild.name}** for: ${reason}`);
 
 		let punishNotificationChannel = EMBEDS.moderationCommands.punishNotificationChannel;
 		punishNotificationChannel.setDescription(`**${toBan.user.tag}** has been banned for: ${reason}`);

@@ -10,79 +10,79 @@ client.cooldowns = new Collection();
 //Events
 const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
 for (const file of eventFiles) {
-    const event = require(`./events/${file}`);
-    if (event.once) {
-        client.once(event.name, async (...args) => await event.execute(...args, client));
-    } else {
-        client.on(event.name, async (...args) => await event.execute(...args, client));
-    }
+	const event = require(`./events/${file}`);
+	if (event.once) {
+		client.once(event.name, async (...args) => await event.execute(...args, client));
+	} else {
+		client.on(event.name, async (...args) => await event.execute(...args, client));
+	}
 }
 
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 for (const file of commandFiles) {
-    const command = require(`./commands/${file}`);
-    client.commands.set(command.name, command);
+	const command = require(`./commands/${file}`);
+	client.commands.set(command.name, command);
 }
 const commandFolders = fs.readdirSync('./commands');
 for (const folder of commandFolders) {
-    const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
-    for (const file of commandFiles) {
-        const command = require(`./commands/${folder}/${file}`);
-        client.commands.set(command.name, command);
-    }
+	const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
+	for (const file of commandFiles) {
+		const command = require(`./commands/${folder}/${file}`);
+		client.commands.set(command.name, command);
+	}
 }
 
 //Command Handler
 client.on('messageCreate', async message => {
-    if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
+	if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
 
-    const args = message.content
-	    .slice(prefix.length)
-	    .trim()
-	    .split(/ +/);
+	const args = message.content
+		.slice(prefix.length)
+		.trim()
+		.split(/ +/);
 
-    const commandName = args.shift().toLowerCase();
+	const commandName = args.shift().toLowerCase();
 
-    const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
+	const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
 
-    if (!command) return;
+	if (!command) return;
 
-    let permissions = message.channel.permissionsFor(message.member);
+	let permissions = message.channel.permissionsFor(message.member);
 
-    if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' })
+	if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' })
 
-    const { cooldowns } = client;
+	const { cooldowns } = client;
 
-    if (!cooldowns.has(command.name)) {
-        cooldowns.set(command.name, new Collection());
-    }
+	if (!cooldowns.has(command.name)) {
+		cooldowns.set(command.name, new Collection());
+	}
 
-    const now = Date.now();
-    const timestamps = cooldowns.get(command.name);
-    const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; //Default cooldown time would be 1 second
+	const now = Date.now();
+	const timestamps = cooldowns.get(command.name);
+	const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; //Default cooldown time would be 1 second
 
-    if (timestamps.has(message.author.id)) {
-        const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
+	if (timestamps.has(message.author.id)) {
+		const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
 
-        if (now < expirationTime) {
-            const timeLeft = (expirationTime - now) / 1000;
-            return message.reply(`Please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
-        }
-    }
+		if (now < expirationTime) {
+			const timeLeft = (expirationTime - now) / 1000;
+			return message.reply(`Please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
+		}
+	}
 
-    timestamps.set(message.author.id, now);
-    setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+	timestamps.set(message.author.id, now);
+	setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
 
-    try {
-        await command.execute(message, args, client);
-    } catch (error) {
-        console.error(error);
-        await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);
-    }
+	try {
+		await command.execute(message, args, client);
+	} catch (error) {
+		console.error(error);
+		await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);
+	}
 });
 
 process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
+	console.error('Unhandled promise rejection:', error);
 });
 
 client.login(token)
