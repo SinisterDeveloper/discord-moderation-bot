@@ -5,7 +5,7 @@
 
 # Setup - Very Important
 ## Prerequisites
-* **[node.js](https://nodejs.org/en/)**
+* **[node.js](https://nodejs.org/en/)** - >Version 14
 ## Clone the repository using Git or Github Desktop
 Navigate to the folder in the terminal
 ```bash
