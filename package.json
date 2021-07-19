@@ -11,16 +11,20 @@
     "url": "git+https://github.com/SinisterDeveloper/discord-moderation-bot.git"
   },
   "keywords": [
-    "Discord"
+    "Discord",
+    "bot",
+    "moderation",
+    "database"
   ],
   "author": "SinisterDev",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/SinisterDeveloper/discord-moderation-bot/issues"
   },
   "homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
   "dependencies": {
     "discord.js": "^13.0.0-dev.d433fe8.1626004976",
+    "mongodb": "^4.0.0",
     "ms": "^2.1.3"
   }
 }

@@ -5,9 +5,11 @@ module.exports = {
 	name: 'kick',
 	description: 'Check the bot latency',
 	cooldown: 3,
+	category: "moderation",
 	aliases: [],
-	permission: `SEND_MESSAGES`,
+	permission: `KICK_MEMBERS`,
 	usage: prefix + this.name,
+	requireArgs: true,
 	async execute(message, args, client) {
 		const toKick = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
 		if (!toKick) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });

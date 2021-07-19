@@ -5,11 +5,14 @@ module.exports = {
 	name: 'ban',
 	description: 'Ban members from your server',
 	cooldown: 3,
-	aliases: ['ipban'],
-	permission: `SEND_MESSAGES`,
-	usage: prefix + this.name,
-	async execute(message, args, client) {
-		const toBan = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+	category: "moderation",
+	aliases: ['exile'],
+	requireArgs: true,
+	permission: `BAN_MEMBERS`,
+	usage: `${prefix}ban <member> <reason>`,
+	async execute(message, args, client, pool) {
+		const db = pool.db("Bot");
+		const toBan = message.mentions.members.first() || await message.guild.members.fetch(args[0]);
 		if (!toBan) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });
 
 		if (toBan.roles.highest.position > message.guild.me.roles.highest.position)  return message.channel.send(EMBEDS.moderationCommands.punishUserHigherBot);
@@ -38,6 +41,18 @@ module.exports = {
 				reason: reason
 			});
 			message.channel.send({ embeds: [punishNotificationChannel] });
+			const date = new Date().toString();
+			await db
+				.collection("Modlogs")
+				.insertOne({
+					Type: "Ban",
+					User: toBan.id,
+					Moderator: message.member.id,
+					Reason: reason,
+					Date: date
+				}, function (err, res) {
+					if (err) throw err;
+				});
 		}
 	}
 }

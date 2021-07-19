@@ -1,6 +1,15 @@
 const fs = require('fs');
 const { Client, Collection, Intents } = require('discord.js');
-const { prefix, token, defaultCooldown } = require('./config.json');
+const { MongoClient } = require('mongodb');
+const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
+const { miscellaneous }= require('./Assets/Static/embeds');
+
+const pool = new MongoClient(MongoConnectionUrl);
+
+pool.connect()
+	.then(() => {
+		console.log('Connected to database')
+	});
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
 
@@ -47,6 +56,11 @@ client.on('messageCreate', async message => {
 
 	if (!command) return;
 
+	if (command.requireArgs) {
+		const usageEmbed = await miscellaneous.sendUsage(command);
+		if (!args.length) return message.reply({ embeds: [usageEmbed] });
+	}
+
 	let permissions = message.channel.permissionsFor(message.member);
 
 	if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' })
@@ -74,7 +88,7 @@ client.on('messageCreate', async message => {
 	setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
 
 	try {
-		await command.execute(message, args, client);
+		await command.execute(message, args, client, pool);
 	} catch (error) {
 		console.error(error);
 		await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);

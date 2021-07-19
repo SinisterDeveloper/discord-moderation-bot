@@ -1,6 +1,7 @@
 {
     "token": "",
     "prefix": "",
+    "MongoConnectionUrl": "",
     "defaultCooldown": 1,
     "accentColor": ""
 }
