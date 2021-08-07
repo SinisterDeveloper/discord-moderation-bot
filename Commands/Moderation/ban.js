@@ -11,7 +11,7 @@ module.exports = {
 	requireArgs: true,
 	permission: `BAN_MEMBERS`,
 	usage: `${prefix}ban <member> <reason>`,
-	async execute(message, args, client) {
+	async execute(message, args) {
 		const toBan = message.mentions.members.first() || await message.guild.members.fetch(args[0]);
 
 		if (!toBan) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });

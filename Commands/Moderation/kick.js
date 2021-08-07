@@ -11,7 +11,7 @@ module.exports = {
 	permission: `KICK_MEMBERS`,
 	usage: prefix + this.name,
 	requireArgs: true,
-	async execute(message, args, client) {
+	async execute(message, args) {
 		const toKick = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
 		if (!toKick) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });
 

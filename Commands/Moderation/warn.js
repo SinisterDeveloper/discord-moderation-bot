@@ -11,7 +11,7 @@ module.exports = {
 	usage: prefix + this.name,
 	category: "moderation",
 	requireArgs: true,
-	async execute(message, args, client) {
+	async execute(message, args) {
 		const date = new Date().toString();
 
 		const toWarn = message.mentions.members.first() || await message.guild.members.fetch(args[0]);

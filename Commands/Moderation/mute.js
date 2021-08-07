@@ -12,7 +12,7 @@ module.exports = {
 	usage: prefix + this.name,
 	requireArgs: true,
 	category: "moderation",
-	async execute(message, args, client) {
+	async execute(message, args) {
 		const date = new Date().toString();
 
 		const toMute = message.mentions.members.first() || await message.guild.members.fetch(args[0]);

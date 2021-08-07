@@ -12,7 +12,7 @@ module.exports = {
 	requireArgs: true,
 	permission: `KICK_MEMBERS`,
 	usage: `${prefix}modlogs <user>`,
-	async execute(message, args, client, pool) {
+	async execute(message, args, client) {
 		const toCheck = message.mentions.users.first() || await client.users.fetch(args[0]);
 
 		if (!toCheck) return message.reply({ content: `Unable to fetch User \`${toCheck}\`` });
