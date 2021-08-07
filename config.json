@@ -1,7 +1,7 @@
 {
-    "token": "ODEwNzk0NzUxNTI3ODc4NjYw.YCo1dA.p3i3in3Aqd2n5EuE6qH97xgDB7k",
-    "prefix": ",",
-    "MongoConnectionUrl": "mongodb+srv://Krishay:a3uCFXAbv6XFRbhA@rocord.f1igd.mongodb.net/utility?retryWrites=true&w=majority",
+    "token": "YOUR_BOT_TOKEN",
+    "prefix": "",
+    "MongoConnectionUrl": "",
     "defaultCooldown": 1,
-    "accentColor": "GREYPLE"
+    "accentColor": ""
 }
