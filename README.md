@@ -1,12 +1,13 @@
-[![CodeFactor](https://www.codefactor.io/repository/github/sinisterdeveloper/discord-moderation-bot/badge)](https://www.codefactor.io/repository/github/sinisterdeveloper/discord-moderation-bot)
+<div align="center">
+  <p>
+    <img alt="CodeFactor Grade" src="https://img.shields.io/codefactor/grade/github/SinisterDeveloper/discord-moderation-bot/stable">
+    <img alt="LICENSE" src="https://img.shields.io/github/license/SinisterDeveloper/discord-moderation-bot">
+    <img alt="Version" src="https://img.shields.io/github/package-json/v/SinisterDeveloper/discord-moderation-bot">
+    <img alt="CodeLines" src="https://img.shields.io/tokei/lines/github/SinisterDeveloper/discord-moderation-bot">
+    <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/SinisterDeveloper/discord-moderation-bot">
+  </p>
+</div>
 
-![GitHub](https://img.shields.io/github/license/SinisterDeveloper/discord-moderation-bot)
-
-![GitHub package.json version](https://img.shields.io/github/package-json/v/SinisterDeveloper/discord-moderation-bot)
-
-![Lines of code](https://img.shields.io/tokei/lines/github/SinisterDeveloper/discord-moderation-bot)
-
-![GitHub repo size](https://img.shields.io/github/repo-size/SinisterDeveloper/discord-moderation-bot)
 
 # discord-moderation-bot
 
