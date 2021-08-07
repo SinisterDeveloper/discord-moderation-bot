@@ -25,7 +25,7 @@ const punishNotificationChannel = new MessageEmbed()
 
 const isAdmin = new MessageEmbed()
 	.setColor(colors.accentColor)
-	.setDescription(`I may not target this user as he is an admin`)
+	.setDescription(`I may not target this user as he is an admin`);
 
 exports.moderationCommands = {
 	PunishUserHigher,
@@ -33,7 +33,7 @@ exports.moderationCommands = {
 	punishNotificationDM,
 	punishNotificationChannel,
 	isAdmin
-}
+};
 
 
 // Misc Embeds
@@ -43,7 +43,7 @@ function sendUsage(command) {
 	let aliases = [];
 
 	command.aliases.forEach(a => {
-		aliases.push(`\`${a}\``)
+		aliases.push(`\`${a}\``);
 	});
 	usageEmbed.setColor(colors.accentColor);
 	usageEmbed.setTitle(`Command - ${command.name.toUpperCase()}`);
@@ -65,10 +65,10 @@ function sendHelp(misc, mod) {
 	let miscCommand = [];
 
 	misc.forEach(c => {
-		miscCommand.push(`\`${c}\``)
+		miscCommand.push(`\`${c}\``);
 	});
 	mod.forEach(c => {
-		modCommand.push(`\`${c}\``)
+		modCommand.push(`\`${c}\``);
 	});
 
 	return new MessageEmbed()
@@ -83,4 +83,4 @@ function sendHelp(misc, mod) {
 exports.miscellaneous = {
 	sendUsage: sendUsage,
 	help: sendHelp
-}
+};

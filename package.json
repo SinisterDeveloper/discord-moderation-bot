@@ -6,6 +6,7 @@
   "scripts": {
     "build": "npm ci",
     "dev": "node .",
+    "lint": "eslint .",
     "deploy": "NODE_ENV=production node ."
   },
   "repository": {

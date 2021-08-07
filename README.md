@@ -96,9 +96,3 @@ If you need help, kindly open an issue and I'll help, alternatively you can DM m
 # Contributions
 
 I am always open to contributions! If you feel anything is missing, or you want to add a command/feature, please open a Pull Request.
-
-
-
-
-
-
