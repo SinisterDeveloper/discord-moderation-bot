@@ -1,22 +1,20 @@
 const fs = require('fs');
 const { Client, Collection, Intents } = require('discord.js');
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
 const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
 const { miscellaneous }= require('./Assets/Static/embeds');
 
-const pool = new MongoClient(MongoConnectionUrl);
-
-pool.connect()
-	.then(() => {
-		console.log('Connected to database')
-	});
+// Database Connection
+mongoose.connect(MongoConnectionUrl, { useUnifiedTopology: true, useNewUrlParser: true, useFindAndModify: false })
+	.then(() => console.log('Connected to Database.'))
+	.catch((error) => console.log(error));
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
 
 client.commands = new Collection();
 client.cooldowns = new Collection();
 
-//Events
+// Events
 const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
 for (const file of eventFiles) {
 	const event = require(`./events/${file}`);
@@ -27,11 +25,6 @@ for (const file of eventFiles) {
 	}
 }
 
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
-for (const file of commandFiles) {
-	const command = require(`./commands/${file}`);
-	client.commands.set(command.name, command);
-}
 const commandFolders = fs.readdirSync('./commands');
 for (const folder of commandFolders) {
 	const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
@@ -41,7 +34,7 @@ for (const folder of commandFolders) {
 	}
 }
 
-//Command Handler
+// Command Handler
 client.on('messageCreate', async message => {
 	if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
 
@@ -63,7 +56,7 @@ client.on('messageCreate', async message => {
 
 	let permissions = message.channel.permissionsFor(message.member);
 
-	if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' })
+	if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' });
 
 	const { cooldowns } = client;
 
@@ -73,7 +66,7 @@ client.on('messageCreate', async message => {
 
 	const now = Date.now();
 	const timestamps = cooldowns.get(command.name);
-	const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; //Default cooldown time would be 1 second
+	const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; // Default cooldown time would be 1 second
 
 	if (timestamps.has(message.author.id)) {
 		const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
@@ -88,7 +81,7 @@ client.on('messageCreate', async message => {
 	setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
 
 	try {
-		await command.execute(message, args, client, pool);
+		command.execute(message, args, client);
 	} catch (error) {
 		console.error(error);
 		await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);

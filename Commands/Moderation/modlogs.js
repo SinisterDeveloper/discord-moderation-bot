@@ -1,6 +1,7 @@
 const { prefix } = require('../../config.json');
 const { MessageEmbed } = require('discord.js');
 const colors = require('../../Assets/Static/colors');
+const ModlogSchema = require('../../Schemas/modlog');
 
 module.exports = {
 	name: 'modlogs',
@@ -12,38 +13,29 @@ module.exports = {
 	permission: `KICK_MEMBERS`,
 	usage: `${prefix}modlogs <user>`,
 	async execute(message, args, client, pool) {
-		const db = pool.db("Bot");
-
 		const toCheck = message.mentions.users.first() || await client.users.fetch(args[0]);
 
-		try {
-			await db
-				.collection("Modlogs")
-				.find({
-					User: toCheck.id
-				})
-				.toArray(async function (err, result) {
-					if (err) throw err;
+		if (!toCheck) return message.reply({ content: `Unable to fetch User \`${toCheck}\`` });
 
-					if (!result.length) return message.channel.send(`No modlogs found for \`${toCheck.tag}\``);
+		let doc = await ModlogSchema.find({ User: toCheck.id });
 
-					const modlogsEmbed = new MessageEmbed()
-						.setTitle(`Modlogs for ${toCheck.tag}`)
-						.setTimestamp()
-						.setColor(colors.accentColor);
+		if (!doc || !doc.length) return message.reply({ content: `No modlogs found for \`${toCheck.tag}\``, allowedMentions: { repliedUser: false } });
 
-					await message.channel.send({ content: result.length === 1 ? `1 result found` : `${result.length} results found` });
+		doc = doc.reverse();
+		
+		const modlogsEmbed = new MessageEmbed()
+			.setTitle(`Modlogs for ${toCheck.tag}`)
+			.setTimestamp()
+			.setColor(colors.accentColor);
 
-					await result.forEach(async res => {
-						const date = new Date(res.Date);
-						let moderator = await client.users.fetch(res.Moderator);
-						modlogsEmbed.addField(`Case Id: ${res._id.toString()}`, `**Type**: ${res.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${res.Reason}\n**Created at**: ${date.toDateString()}`)
-					});
+		await message.channel.send({ content: doc.length === 1 ? `1 result found:` : `${doc.length} results found` });
 
-					await message.channel.send({ embeds: [modlogsEmbed] });
-				})
-		} catch (err) {
-			message.channel.send({ content: err.message });
-		}
-	}
-}
+		await doc.forEach(async res => {
+			const date = new Date(res.Date);
+			let moderator = await client.users.fetch(res.Moderator);
+			modlogsEmbed.addField(`Case Id: ${res._id.toString()}`, `**Type**: ${res.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${res.Reason}\n**Created at**: ${date.toDateString()}`);
+		});
+
+		await message.channel.send({ embeds: [modlogsEmbed] });
+	},
+};

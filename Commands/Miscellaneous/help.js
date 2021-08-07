@@ -18,10 +18,10 @@ module.exports = {
 
 			commands.forEach(c => {
 				if (c.category === "miscellaneous") miscCommands.push(c.name);
-			})
+			});
 			commands.forEach(c => {
 				if (c.category === "moderation") modCommands.push(c.name);
-			})
+			});
 
 			const helpEmbed = await miscellaneous.help(miscCommands, modCommands);
 
@@ -39,4 +39,4 @@ module.exports = {
 			await message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
 		}
 	}
-}
+};
