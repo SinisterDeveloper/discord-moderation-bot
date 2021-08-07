@@ -14,7 +14,7 @@ A customizable moderation bot made by [SinisterDev](https://discord.com/users/77
 
 ### Important: 
 
-This repository's [v1 branch]() is deprecated, however it does not require you to have a database and you may still use it for the time being, however I will not be adding new features to the old version.
+This repository's [v1 branch](https://github.com/SinisterDeveloper/discord-moderation-bot/tree/v1) is deprecated, however it does not require you to have a database and you may still use it for the time being, however I will not be adding new features to the old version.
 
 # Setup
 
