@@ -1,26 +1,38 @@
 {
   "name": "discord-moderation-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A customizable Discord moderation bot",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm ci",
+    "dev": "node .",
+    "lint": "eslint .",
+    "deploy": "NODE_ENV=production node ."
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/SinisterDeveloper/discord-moderation-bot.git"
   },
   "keywords": [
-    "Discord"
+    "Discord",
+    "bot",
+    "moderation",
+    "database"
   ],
   "author": "SinisterDev",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/SinisterDeveloper/discord-moderation-bot/issues"
   },
   "homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
   "dependencies": {
-    "discord.js": "^12.5.3",
-    "ms": "^2.1.3"
+    "discord.js": "^13.0.1",
+    "mongoose": "^5.13.5"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.3",
+    "erlpack": "github:discord/erlpack",
+    "utf-8-validate": "^5.0.5",
+    "zlib-sync": "^0.1.7"
   }
 }

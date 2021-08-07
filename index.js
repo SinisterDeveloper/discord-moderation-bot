@@ -1,92 +1,96 @@
 const fs = require('fs');
-const Discord = require('discord.js');
-const { prefix, token, defaultCooldown } = require('./config.json');
+const { Client, Collection, Intents } = require('discord.js');
+const mongoose = require('mongoose');
+const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
+const { miscellaneous }= require('./Assets/Static/embeds');
 
-const client = new Discord.Client();
-client.commands = new Discord.Collection();
-client.cooldowns = new Discord.Collection();
+// Database Connection
+mongoose.connect(MongoConnectionUrl, { useUnifiedTopology: true, useNewUrlParser: true, useFindAndModify: false })
+	.then(() => console.log('Connected to Database.'))
+	.catch((error) => console.log(error));
 
-//Events
+const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
+
+client.commands = new Collection();
+client.cooldowns = new Collection();
+
+// Events
 const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
 for (const file of eventFiles) {
-    const event = require(`./events/${file}`);
-    if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args, client));
-    } else {
-        client.on(event.name, (...args) => event.execute(...args, client));
-    }
+	const event = require(`./events/${file}`);
+	if (event.once) {
+		client.once(event.name, async (...args) => await event.execute(...args, client));
+	} else {
+		client.on(event.name, async (...args) => await event.execute(...args, client));
+	}
 }
 
-
-//Commands
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
-for (const file of commandFiles) {
-    const command = require(`./commands/${file}`);
-    client.commands.set(command.name, command);
-}
 const commandFolders = fs.readdirSync('./commands');
 for (const folder of commandFolders) {
-    const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
-    for (const file of commandFiles) {
-        const command = require(`./commands/${folder}/${file}`);
-        client.commands.set(command.name, command);
-    }
+	const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
+	for (const file of commandFiles) {
+		const command = require(`./commands/${folder}/${file}`);
+		client.commands.set(command.name, command);
+	}
 }
 
-//Command Handler
-client.on('message', message => {
-    if (!message.content.startsWith(prefix) || message.author.bot) return;
+// Command Handler
+client.on('messageCreate', async message => {
+	if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+	const args = message.content
+		.slice(prefix.length)
+		.trim()
+		.split(/ +/);
 
-    const command = client.commands.get(commandName)
-        || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
-    if (!command) return;
-    if (message.channel.type === 'dm') return
-    if (!message.member.hasPermission(command.permission) && message.author.id !== "778140362790404158") {
-        let MissingPerm = new Discord.MessageEmbed()
-            .setColor("#000000")
-            .setTitle("Permissions missing!")
-            .setDescription(`You don't have the permissions to use this command. Only users with the \`${command.permission}\` permission can use the command!`)
-            .setFooter("Darke");
+	const commandName = args.shift().toLowerCase();
 
-        return message.channel.send(MissingPerm);
-    }
-    //Spam is something you generally want to avoid–especially if one of your commands requires calls to other APIs or takes a bit of time to build/send.
-    
-    const { cooldowns } = client;
+	const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
 
-    if (!cooldowns.has(command.name)) {
-        cooldowns.set(command.name, new Discord.Collection());
-    }
+	if (!command) return;
 
-    const now = Date.now();
-    const timestamps = cooldowns.get(command.name);
-    const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; //Default cooldown time would be 1 second
+	if (command.requireArgs) {
+		const usageEmbed = await miscellaneous.sendUsage(command);
+		if (!args.length) return message.reply({ embeds: [usageEmbed] });
+	}
 
-    if (timestamps.has(message.author.id)) {
-        const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
+	let permissions = message.channel.permissionsFor(message.member);
 
-        if (now < expirationTime) {
-            const timeLeft = (expirationTime - now) / 1000;
-            return message.reply(`please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
-        }
-    }
-    //If the author has already used this command in this session, get the timestamp, calculate the expiration time and inform the user of the amount of time they need to wait before using this command again.
-    timestamps.set(message.author.id, now);
-    setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+	if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' });
 
-    try {
-        command.execute(message, args, client);
-    } catch (error) {
-        console.error(error);
-        message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`${error.message}\``);
-    } //End Of Command Setup
+	const { cooldowns } = client;
+
+	if (!cooldowns.has(command.name)) {
+		cooldowns.set(command.name, new Collection());
+	}
+
+	const now = Date.now();
+	const timestamps = cooldowns.get(command.name);
+	const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; // Default cooldown time would be 1 second
+
+	if (timestamps.has(message.author.id)) {
+		const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
+
+		if (now < expirationTime) {
+			const timeLeft = (expirationTime - now) / 1000;
+			return message.reply(`Please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
+		}
+	}
+
+	timestamps.set(message.author.id, now);
+	setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+
+	try {
+		command.execute(message, args, client);
+	} catch (error) {
+		console.error(error);
+		await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);
+	}
 });
 
 process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
+	console.error('Unhandled promise rejection:', error);
 });
 
-client.login(token).then(() => console.log(`Token entered!`));
+client.login(token)
+	.then(() => console.log(`Valid token..`));

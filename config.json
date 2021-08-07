@@ -1,5 +1,7 @@
 {
-    "token": "",
+    "token": "YOUR_BOT_TOKEN",
     "prefix": "",
-    "defaultCooldown": 1
+    "MongoConnectionUrl": "",
+    "defaultCooldown": 1,
+    "accentColor": ""
 }
