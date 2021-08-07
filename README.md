@@ -38,7 +38,8 @@ List of dependencies:
 2. **[mongoose](https://www.npmjs.com/package/mongoose)** - The library we will be using for managing our database operations
 
 **Testing**: Run `npm install` to install all the dependenices if you are testing the bot locally 
-**Productin/Deployment**: Run `npm run build` to install dependencies if you are using the bot for production and/or if you are deploying
+
+**Production/Deployment**: Run `npm run build` to install dependencies if you are using the bot for production and/or if you are deploying
 
 You can delete the `.github` folder. It is not required and only used for this repository's maintenance 
 
