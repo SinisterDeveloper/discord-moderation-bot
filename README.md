@@ -67,6 +67,7 @@ Your `config.JSON` should look something like this:
 {
     "token": "YOUR_BOT_TOKEN", 
     "prefix": ",",
+    "MongoConnectionUrl": "some-uri-here"
     "defaultCooldown": 1
 }
 ```
