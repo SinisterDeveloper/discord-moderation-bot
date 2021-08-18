@@ -91,9 +91,19 @@ npm run deploy
 
 The bot should come online within a few seconds if you did the above steps correctly.
 
+# Video Tutorial
+
+Due to some confusion regarding the bot setup, I have made a video which will assist you on setting it up
+
 # Support
 
 If you need help, kindly open an issue and I'll help, alternatively you can DM me on Discord `SinisterDev#2006`. But opening an issue would be better.
+
+
+
+https://user-images.githubusercontent.com/80232412/129895905-17a3e0b8-1a94-48a6-a257-d6541d8dfe5f.mp4
+
+
 
 # Contributions
 
