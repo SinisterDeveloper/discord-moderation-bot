@@ -4,7 +4,7 @@ const ModlogSchema = require('../../Schemas/modlog');
 
 module.exports = {
 	name: 'kick',
-	description: 'Check the bot latency',
+	description: 'Kick a member from the server',
 	cooldown: 3,
 	category: "moderation",
 	aliases: [],
