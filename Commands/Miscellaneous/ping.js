@@ -7,7 +7,7 @@ module.exports = {
     category: "miscellaneous",
     aliases: ['latency'],
     permission: `SEND_MESSAGES`,
-    usage: prefix + this.name,
+    usage: `${prefix}ping`,
     async execute(message) {
         message.reply({ content: 'Pong!', allowedMentions: { repliedUser: false } })
             .then(resultMessage => {

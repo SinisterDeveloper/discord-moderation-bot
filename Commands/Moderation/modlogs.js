@@ -17,24 +17,24 @@ module.exports = {
 
 		if (!toCheck) return message.reply({ content: `Unable to fetch User \`${toCheck}\`` });
 
-		let doc = await ModlogSchema.find({ User: toCheck.id });
+		let docs = await ModlogSchema.find({ User: toCheck.id });
 
-		if (!doc || !doc.length) return message.reply({ content: `No modlogs found for \`${toCheck.tag}\``, allowedMentions: { repliedUser: false } });
+		if (!docs || !docs.length) return message.reply({ content: `No modlogs found for \`${toCheck.tag}\``, allowedMentions: { repliedUser: false } });
 
-		doc = doc.reverse();
+		docs = docs.reverse();
 		
 		const modlogsEmbed = new MessageEmbed()
 			.setTitle(`Modlogs for ${toCheck.tag}`)
 			.setTimestamp()
 			.setColor(colors.accentColor);
 
-		await message.channel.send({ content: doc.length === 1 ? `1 result found:` : `${doc.length} results found` });
+		await message.channel.send({ content: docs.length === 1 ? `1 result found:` : `${docs.length} results found` });
 
-		await doc.forEach(async res => {
-			const date = new Date(res.Date);
-			let moderator = await client.users.fetch(res.Moderator);
-			modlogsEmbed.addField(`Case Id: ${res._id.toString()}`, `**Type**: ${res.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${res.Reason}\n**Created at**: ${date.toDateString()}`);
-		});
+		for (const doc of docs) {
+			const date = new Date(doc.Date);
+			let moderator = await client.users.fetch(doc.Moderator);
+			modlogsEmbed.addField(`Case Id: ${doc._id.toString()}`, `**Type**: ${doc.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${doc.Reason}\n**Created at**: ${date.toDateString()}`);
+		}
 
 		await message.channel.send({ embeds: [modlogsEmbed] });
 	},

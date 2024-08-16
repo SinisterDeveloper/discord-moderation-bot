@@ -1,5 +1,5 @@
 const { prefix } = require('../../config.json');
-const EMBEDS = require(`../../assets/Static/embeds`);
+const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
 const MuteRoleSchema = require('../../Schemas/muterole');
 
@@ -9,7 +9,7 @@ module.exports = {
 	cooldown: 3,
 	aliases: [],
 	permission: `KICK_MEMBERS`,
-	usage: prefix + this.name,
+	usage: `${prefix}unmute <member>`,
 	requireArgs: true,
 	category: "moderation",
 	async execute(message, args) {

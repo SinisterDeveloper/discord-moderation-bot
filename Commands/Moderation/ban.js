@@ -1,5 +1,5 @@
 const { prefix } = require('../../config.json');
-const EMBEDS = require(`../../assets/Static/embeds`);
+const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
 
 module.exports = {
@@ -16,12 +16,10 @@ module.exports = {
 
 		if (!toBan) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });
 
-		if (toBan.roles.highest.position > message.guild.me.roles.highest.position) return message.channel.send({ embeds: [EMBEDS.moderationCommands.punishUserHigherBot] });
-		if (toBan.roles.highest.position === message.guild.me.roles.highest.position) return message.channel.send({ embeds: [EMBEDS.moderationCommands.punishUserHigherBot] });
+		if (toBan.roles.highest.position >= message.guild.me.roles.highest.position)
+			return message.channel.send({ embeds: [EMBEDS.moderationCommands.punishUserHigherBot] });
 
-		if (toBan.roles.highest.position > message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
-			return message.channel.send({ embeds: [EMBEDS.moderationCommands.PunishUserHigher] });
-		if (toBan.roles.highest.position === message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
+		if (toBan.roles.highest.position >= message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
 			return message.channel.send({ embeds: [EMBEDS.moderationCommands.PunishUserHigher] });
 
 		const reason = args.slice(1).join(' ') || 'No reason specified';

@@ -27,7 +27,7 @@
   "homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
   "dependencies": {
     "discord.js": "^13.0.1",
-    "mongoose": "^5.13.5"
+    "mongoose": "^8.4.1"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.3",

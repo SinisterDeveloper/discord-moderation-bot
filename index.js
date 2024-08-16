@@ -4,32 +4,39 @@ const mongoose = require('mongoose');
 const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
 const { miscellaneous }= require('./Assets/Static/embeds');
 
-// Database Connection
-mongoose.connect(MongoConnectionUrl, { useUnifiedTopology: true, useNewUrlParser: true, useFindAndModify: false })
-	.then(() => console.log('Connected to Database.'))
-	.catch((error) => console.log(error));
+async function connect() {
+	mongoose
+		.connect(MongoConnectionUrl, {
+			dbName: 'moderation-bot',
+		})
+		.then(() => console.log('Established connection with Database'))
+		.catch((error) => console.error(error));
+
+	client.login(token)
+		.then(() => console.log(`Token authenticated!`));
+}
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
 
-client.commands = new Collection();
-client.cooldowns = new Collection();
+client.commands = new Map();
+client.cooldowns = new Map();
 
 // Events
-const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
+const eventFiles = fs.readdirSync('./Events').filter(file => file.endsWith('.js'));
 for (const file of eventFiles) {
-	const event = require(`./events/${file}`);
+	const event = require(`./Events/${file}`);
 	if (event.once) {
-		client.once(event.name, async (...args) => await event.execute(...args, client));
+		client.once(event.name, async (...args) => await event.execute(...args));
 	} else {
-		client.on(event.name, async (...args) => await event.execute(...args, client));
+		client.on(event.name, async (...args) => await event.execute(...args));
 	}
 }
 
-const commandFolders = fs.readdirSync('./commands');
+const commandFolders = fs.readdirSync('./Commands');
 for (const folder of commandFolders) {
-	const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
+	const commandFiles = fs.readdirSync(`./Commands/${folder}`).filter(file => file.endsWith('.js'));
 	for (const file of commandFiles) {
-		const command = require(`./commands/${folder}/${file}`);
+		const command = require(`./Commands/${folder}/${file}`);
 		client.commands.set(command.name, command);
 	}
 }
@@ -92,5 +99,4 @@ process.on('unhandledRejection', error => {
 	console.error('Unhandled promise rejection:', error);
 });
 
-client.login(token)
-	.then(() => console.log(`Valid token..`));
+connect().catch((e) => console.error(e));

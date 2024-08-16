@@ -8,7 +8,7 @@ module.exports = {
 	aliases: ['commands'],
 	category: "miscellaneous",
 	permission: `SEND_MESSAGES`,
-	usage: prefix + this.name,
+	usage: `${prefix}help {command?}`,
 	async execute(message, args, client) {
 		const { commands } = client;
 

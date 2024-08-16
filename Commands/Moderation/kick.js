@@ -1,5 +1,5 @@
 const { prefix } = require('../../config.json');
-const EMBEDS = require(`../../assets/Static/embeds`);
+const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
 
 module.exports = {
@@ -9,19 +9,17 @@ module.exports = {
 	category: "moderation",
 	aliases: [],
 	permission: `KICK_MEMBERS`,
-	usage: prefix + this.name,
+	usage: `${prefix}kick <member> {reason?}`,
 	requireArgs: true,
 	async execute(message, args) {
 		const toKick = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
 		if (!toKick) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });
 
-		if (toKick.roles.highest.position > message.guild.me.roles.highest.position) return message.channel.send(EMBEDS.moderationCommands.punishUserHigherBot);
-		if (toKick.roles.highest.position === message.guild.me.roles.highest.position) return message.channel.send(EMBEDS.moderationCommands.punishUserHigherBot);
+		if (toKick.roles.highest.position >= message.guild.me.roles.highest.position)
+			return message.channel.send({ embeds: [EMBEDS.moderationCommands.punishUserHigherBot] });
 
-		if (toKick.roles.highest.position > message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
-			return message.channel.send(EMBEDS.moderationCommands.PunishUserHigher);
-		if (toKick.roles.highest.position === message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
-			return message.channel.send(EMBEDS.moderationCommands.PunishUserHigher);
+		if (toKick.roles.highest.position >= message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
+			return message.channel.send({ embeds: [EMBEDS.moderationCommands.PunishUserHigher] });
 
 		const reason = args.slice(1).join(' ') || 'No reason specified';
 

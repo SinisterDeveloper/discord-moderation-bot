@@ -1,5 +1,5 @@
 const { prefix } = require('../../config.json');
-const EMBEDS = require(`../../assets/Static/embeds`);
+const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
 const MuteRoleSchema = require('../../Schemas/muterole');
 
@@ -9,7 +9,7 @@ module.exports = {
 	cooldown: 3,
 	aliases: ['jail'],
 	permission: `KICK_MEMBERS`,
-	usage: prefix + this.name,
+	usage: `${prefix}mute <member> {reason?}`,
 	requireArgs: true,
 	category: "moderation",
 	async execute(message, args) {
@@ -18,12 +18,10 @@ module.exports = {
 		const toMute = message.mentions.members.first() || await message.guild.members.fetch(args[0]);
 		if (!toMute) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });
 
-		if (toMute.roles.highest.position > message.guild.me.roles.highest.position) return message.channel.send(EMBEDS.moderationCommands.punishUserHigherBot);
-		if (toMute.roles.highest.position === message.guild.me.roles.highest.position) return message.channel.send(EMBEDS.moderationCommands.punishUserHigherBot);
+		if (toMute.roles.highest.position >= message.guild.me.roles.highest.position)
+			return message.channel.send({ embeds: [EMBEDS.moderationCommands.punishUserHigherBot] });
 
-		if (toMute.roles.highest.position > message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
-			return message.channel.send({ embeds: [EMBEDS.moderationCommands.PunishUserHigher] });
-		if (toMute.roles.highest.position === message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
+		if (toMute.roles.highest.position >= message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
 			return message.channel.send({ embeds: [EMBEDS.moderationCommands.PunishUserHigher] });
 
 		if (message.channel.permissionsFor(toMute).has('ADMINISTRATOR')) return message.channel.send({ embeds: [EMBEDS.moderationCommands.isAdmin] });

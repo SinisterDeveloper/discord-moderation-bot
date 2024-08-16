@@ -10,8 +10,8 @@ const PunishUserHigher = new MessageEmbed()
 	.setTimestamp();
 
 const punishUserHigherBot = new MessageEmbed()
-	.setColor("#000000")
-	.setTitle(colors.accentColor)
+	.setColor(colors.accentColor)
+	.setTitle("Permissions missing!")
 	.setDescription("I may not target this member as they have a higher role/same role as me.")
 	.setTimestamp();
 
