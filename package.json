@@ -5,9 +5,9 @@
   "main": "index.js",
   "scripts": {
     "build": "npm ci",
-    "dev": "node .",
+    "start": "node .",
     "lint": "eslint .",
-    "deploy": "NODE_ENV=production node ."
+    "deploy": "pm2 start index.js"
   },
   "repository": {
     "type": "git",

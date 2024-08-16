@@ -83,10 +83,12 @@ npm run dev
 
 ### Deployment
 
-If you are deploying the bot or using it for production, please run:
+If you are deploying this for an event or production, you should use [PM2](https://pm2.io/) (free) so that the process restarts automatically in case of a shutdown.
 
-```
-npm run deploy
+```bash
+npm i -g pm2
+
+npm run production
 ```
 
 The bot should come online within a few seconds if you did the above steps correctly.
