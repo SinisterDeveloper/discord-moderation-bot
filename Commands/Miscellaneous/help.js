@@ -13,14 +13,14 @@ module.exports = {
 		const { commands } = client;
 
 		if (!args.length) {
-			const modCommands = [];
-			const miscCommands = [];
+			let modCommands = [];
+			let miscCommands = [];
+			let adminCommands = []
 
 			commands.forEach(c => {
 				if (c.category === "miscellaneous") miscCommands.push(c.name);
-			});
-			commands.forEach(c => {
-				if (c.category === "moderation") modCommands.push(c.name);
+				else if (c.category === "moderation") modCommands.push(c.name);
+				else adminCommands.push(c.name);
 			});
 
 			const helpEmbed = await miscellaneous.help(miscCommands, modCommands);

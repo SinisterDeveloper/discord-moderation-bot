@@ -4,17 +4,20 @@ const mongoose = require('mongoose');
 
 const Schema = mongoose.Schema;
 
-const MuteRoleSchema = new Schema({
+const SettingsSchema = new Schema({
     GuildID: {
         type: String,
         required: true,
         unique: true,
     },
-    RoleID: {
+    MuteRoleID: {
         type: String,
-        required: true,
-        unique: true,
+        unique: true
+    },
+    MinimumAge: {
+        type: Number,
+        default: 0
     },
 });
 
-module.exports = mongoose.model('Muterole', MuteRoleSchema);
+module.exports = mongoose.model('Setting', SettingsSchema);

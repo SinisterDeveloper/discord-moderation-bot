@@ -75,6 +75,7 @@ function sendHelp(misc, mod) {
 		.setColor(colors.accentColor)
 		.setTimestamp()
 		.setTitle(`Commands`)
+		.addField(`Administration`, modCommand.length ? modCommand.join(', ') : "There are no Moderation commands, very strange...")
 		.addField(`Miscellaneous`, miscCommand.length ? miscCommand.join(', ') : "There are no Miscellaneous commands, very strange...")
 		.addField(`Moderation`, modCommand.length ? modCommand.join(', ') : "There are no Moderation commands, very strange...");
 

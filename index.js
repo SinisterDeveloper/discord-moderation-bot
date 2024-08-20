@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
 const { miscellaneous }= require('./Assets/Static/embeds');
 const Modlogs = require('./Schemas/modlog');
-const MuteRole = require('./Schemas/muterole');
+const Settings = require('./Schemas/settings');
 const { updateModlog } = require('./Assets/util');
 
 async function connect() {
@@ -29,6 +29,7 @@ client.commands = new Map();
 client.cooldowns = new Map();
 client.modlogs = new Map();
 client.muteRoles = new Map();
+client.minage = new Map();
 
 // Events
 const eventFiles = fs.readdirSync('./Events').filter(file => file.endsWith('.js'));
@@ -105,13 +106,13 @@ client.on('messageCreate', async message => {
 });
 
 async function fetchData() {
-    const modlogs = await Modlogs.find({});
-	for (const modlog of modlogs)
+	for (const modlog of await Modlogs.find({}))
 		updateModlog(client, modlog.User, { server: modlog.Guild, modlog: modlog });
 
-    const muteRoles = await MuteRole.find({});
-	for (const muteRole of muteRoles)
-        client.muteRoles.set(muteRole.GuildID, muteRole.RoleID);
+	for (const setting of await Settings.find({})) {
+		if (setting.MuteRoleID) client.muteRoles.set(setting.GuildID, setting.RoleID);
+		if (setting.MinimumAge) client.minage.set(setting.GuildID, setting.MinimumAge);
+	}
 }
 
 process.on('unhandledRejection', error => {

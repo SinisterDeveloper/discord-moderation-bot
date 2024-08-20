@@ -1,7 +1,7 @@
 const { prefix } = require('../../config.json');
 const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
-const MuteRoleSchema = require('../../Schemas/muterole');
+const SettingsSchema = require('../../Schemas/settings');
 const { updateModlog } = require('../../Assets/util');
 
 module.exports = {
@@ -54,12 +54,12 @@ module.exports = {
 			await toMute.send({ embeds: [muteNotificationDM] });
 
 			const muteRoleData = { GuildID: message.guild.id, RoleID: mutedRole.id }
-			new MuteRoleSchema(muteRoleData).save()
-					.then(() => client.muteRoles.set(message.guild.id, mutedRole.id))
-					.catch(err => {
-						console.error(err);
-						return message.reply(`There was an error while saving modlog to the database:\n\`\`\`js\n${err.message}\`\`\``);
-					})
+			SettingsSchema.findOneAndUpdate({ GuildID: message.guild.id }, { MuteRoleID: mutedRole.id }, { upsert: true })
+				.then(() => client.muteRoles.set(message.guild.id, mutedRole.id))
+				.catch(err => {
+					console.error(err);
+					return message.reply(`There was an error while saving modlog to the database:\n\`\`\`js\n${err.message}\`\`\``);
+				})
 
 		} else {
 			let mutedRole = await message.guild.roles.fetch(roleDocs.RoleID);
