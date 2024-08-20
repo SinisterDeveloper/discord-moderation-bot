@@ -1,6 +1,7 @@
 const { prefix } = require('../../config.json');
 const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
+const { updateModlog } = require("../../Assets/util");
 
 module.exports = {
 	name: 'kick',
@@ -11,11 +12,11 @@ module.exports = {
 	permission: `KICK_MEMBERS`,
 	usage: `${prefix}kick <member> {reason?}`,
 	requireArgs: true,
-	async execute(message, args) {
+	async execute(message, args, client) {
 		const toKick = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
 		if (!toKick) return message.channel.send({ content: `Unable to resolve GuildMember \`${args[0]}\`` });
 
-		if (toKick.roles.highest.position >= message.guild.me.roles.highest.position)
+		if (!toKick.kickable)
 			return message.channel.send({ embeds: [EMBEDS.moderationCommands.punishUserHigherBot] });
 
 		if (toKick.roles.highest.position >= message.member.roles.highest.position && message.guild.ownerId !== message.member.id)
@@ -38,14 +39,15 @@ module.exports = {
 			await message.channel.send({ embeds: [punishNotificationChannel] });
 
 			const date = new Date().toString();
-			const Modlog = new ModlogSchema({ Type: 'Kick', User: toKick.id, Moderator: message.member.id, Reason: reason, Date: date });
+			const modlogData = { Type: 'Kick', User: toKick.id, Guild: message.guild.id, Moderator: message.member.id, Reason: reason, Date: date }
+			const Modlog = new ModlogSchema(modlogData);
 
-			Modlog.save(async function(err) {
-				if (err) {
-					console.error(err);
-					return message.reply(`There was an error while saving modlog to the database:\n\`\`\`js\n${err.message}\`\`\``);
-				}
-			});
+			Modlog.save()
+				.then(() => updateModlog(client, toKick.id, { server: message.guild.id, modlog: modlogData }))
+				.catch(e => {
+					console.error(e);
+					return message.reply(`There was an error while saving modlog to the database:\n\`\`\`js\n${e.message}\`\`\``);
+				})
 		}
 	}
 };

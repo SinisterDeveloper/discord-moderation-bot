@@ -3,13 +3,20 @@ const { Client, Collection, Intents } = require('discord.js');
 const mongoose = require('mongoose');
 const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
 const { miscellaneous }= require('./Assets/Static/embeds');
+const Modlogs = require('./Schemas/modlog');
+const MuteRole = require('./Schemas/muterole');
+const { updateModlog } = require('./Assets/util');
 
 async function connect() {
 	mongoose
 		.connect(MongoConnectionUrl, {
 			dbName: 'moderation-bot',
 		})
-		.then(() => console.log('Established connection with Database'))
+		.then(async () => {
+			console.log('Established connection with Database');
+            await fetchData();
+			console.log('Successfully fetched data from the database');
+		})
 		.catch((error) => console.error(error));
 
 	client.login(token)
@@ -20,6 +27,8 @@ const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_
 
 client.commands = new Map();
 client.cooldowns = new Map();
+client.modlogs = new Map();
+client.muteRoles = new Map();
 
 // Events
 const eventFiles = fs.readdirSync('./Events').filter(file => file.endsWith('.js'));
@@ -68,7 +77,7 @@ client.on('messageCreate', async message => {
 	const { cooldowns } = client;
 
 	if (!cooldowns.has(command.name)) {
-		cooldowns.set(command.name, new Collection());
+		cooldowns.set(command.name, new Map());
 	}
 
 	const now = Date.now();
@@ -94,6 +103,16 @@ client.on('messageCreate', async message => {
 		await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);
 	}
 });
+
+async function fetchData() {
+    const modlogs = await Modlogs.find({});
+	for (const modlog of modlogs)
+		updateModlog(client, modlog.User, { server: modlog.Guild, modlog: modlog });
+
+    const muteRoles = await MuteRole.find({});
+	for (const muteRole of muteRoles)
+        client.muteRoles.set(muteRole.GuildID, muteRole.RoleID);
+}
 
 process.on('unhandledRejection', error => {
 	console.error('Unhandled promise rejection:', error);

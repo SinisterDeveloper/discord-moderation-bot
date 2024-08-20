@@ -17,7 +17,7 @@ module.exports = {
 
 		if (!toCheck) return message.reply({ content: `Unable to fetch User \`${toCheck}\`` });
 
-		let docs = await ModlogSchema.find({ User: toCheck.id });
+		let docs = client.modlogs.get(toCheck.id)[message.guild.id];
 
 		if (!docs || !docs.length) return message.reply({ content: `No modlogs found for \`${toCheck.tag}\``, allowedMentions: { repliedUser: false } });
 
@@ -30,10 +30,12 @@ module.exports = {
 
 		await message.channel.send({ content: docs.length === 1 ? `1 result found:` : `${docs.length} results found` });
 
+		let num = 1;
 		for (const doc of docs) {
 			const date = new Date(doc.Date);
 			let moderator = await client.users.fetch(doc.Moderator);
-			modlogsEmbed.addField(`Case Id: ${doc._id.toString()}`, `**Type**: ${doc.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${doc.Reason}\n**Created at**: ${date.toDateString()}`);
+			modlogsEmbed.addField(`${num}) Case Id: ${doc._id.toString()}`, `**Type**: ${doc.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${doc.Reason}\n**Created at**: ${date.toDateString()}\n`);
+			num++;
 		}
 
 		await message.channel.send({ embeds: [modlogsEmbed] });

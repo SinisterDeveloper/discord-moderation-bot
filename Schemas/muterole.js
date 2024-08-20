@@ -17,4 +17,4 @@ const MuteRoleSchema = new Schema({
     },
 });
 
-module.exports = mongoose.model('MuteRoleSchema', MuteRoleSchema);
+module.exports = mongoose.model('Muterole', MuteRoleSchema);

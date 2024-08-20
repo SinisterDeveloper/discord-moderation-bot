@@ -13,6 +13,10 @@ const ModlogSchema = new Schema({
         type: String,
         required: true,
     },
+    Guild: {
+        type: String,
+        required: true,
+    },
     Moderator: {
         type: String,
     },
@@ -26,4 +30,4 @@ const ModlogSchema = new Schema({
 
 });
 
-module.exports = mongoose.model('ModlogSchema', ModlogSchema);
+module.exports = mongoose.model('Modlog', ModlogSchema);
