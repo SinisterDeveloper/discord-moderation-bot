@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { Client, Collection, Intents } = require('discord.js');
+const { Client, Intents } = require('discord.js');
 const mongoose = require('mongoose');
 const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
 const { miscellaneous }= require('./Assets/Static/embeds');

@@ -1,7 +1,6 @@
 const { prefix } = require('../../config.json');
 const { MessageEmbed } = require('discord.js');
 const colors = require('../../Assets/Static/colors');
-const ModlogSchema = require('../../Schemas/modlog');
 
 module.exports = {
 	name: 'modlogs',
@@ -13,9 +12,14 @@ module.exports = {
 	permission: `KICK_MEMBERS`,
 	usage: `${prefix}modlogs <user>`,
 	async execute(message, args, client) {
-		const toCheck = message.mentions.users.first() || await client.users.fetch(args[0]);
-
-		if (!toCheck) return message.reply({ content: `Unable to fetch User \`${toCheck}\`` });
+		let toCheck;
+		try {
+			toCheck = message.mentions.users.first() || await client.users.fetch(args[0], { cache: true });
+		} catch (e) {
+			if (e.httpStatus === 404)
+				return message.reply({ content: `Unknown User: \`${toCheck}\`` });
+			else return message.reply({ content: `Error while fetching User: \`${e}\`` });
+		}
 
 		let docs = client.modlogs.get(toCheck.id)[message.guild.id];
 

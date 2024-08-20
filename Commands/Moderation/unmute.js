@@ -1,8 +1,7 @@
 const { prefix } = require('../../config.json');
 const EMBEDS = require(`../../Assets/Static/embeds`);
 const ModlogSchema = require('../../Schemas/modlog');
-const MuteRoleSchema = require('../../Schemas/muterole');
-const {updateModlog} = require("../../Assets/util");
+const { updateModlog} = require("../../Assets/util");
 
 module.exports = {
 	name: 'unmute',
