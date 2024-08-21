@@ -1,6 +1,6 @@
 module.exports = {
     name: `messageCreate`,
-    async execute(message) {
+    async execute(client, message) {
         if (message.author.bot || !message.guild) return;
         if (message.channel.permissionsFor(message.member).has(`ADMINISTRATOR`)) return;
 

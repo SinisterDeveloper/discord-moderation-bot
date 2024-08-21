@@ -23,7 +23,7 @@ async function connect() {
 		.then(() => console.log(`Token authenticated!`));
 }
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
+const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS, Intents.FLAGS.GUILD_MEMBERS], allowedMentions: { repliedUser: true } });
 
 client.commands = new Map();
 client.cooldowns = new Map();
@@ -36,9 +36,9 @@ const eventFiles = fs.readdirSync('./Events').filter(file => file.endsWith('.js'
 for (const file of eventFiles) {
 	const event = require(`./Events/${file}`);
 	if (event.once) {
-		client.once(event.name, async (...args) => await event.execute(...args));
+		client.once(event.name, async (...args) => await event.execute(client, ...args));
 	} else {
-		client.on(event.name, async (...args) => await event.execute(...args));
+		client.on(event.name, async (...args) => await event.execute(client, ...args));
 	}
 }
 
