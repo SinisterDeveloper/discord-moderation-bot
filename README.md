@@ -3,14 +3,13 @@
     <img alt="CodeFactor Grade" src="https://img.shields.io/codefactor/grade/github/SinisterDeveloper/discord-moderation-bot/stable">
     <img alt="LICENSE" src="https://img.shields.io/github/license/SinisterDeveloper/discord-moderation-bot">
     <img alt="Version" src="https://img.shields.io/github/package-json/v/SinisterDeveloper/discord-moderation-bot">
-    <img alt="CodeLines" src="https://img.shields.io/tokei/lines/github/SinisterDeveloper/discord-moderation-bot">
     <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/SinisterDeveloper/discord-moderation-bot">
   </p>
 </div>
 
 # discord-moderation-bot
 
-A customizable moderation bot made by [SinisterDev](https://discord.com/users/778140362790404158) to help Discord users, whether they are developers or normal users who want to improve their server.
+A customizable moderation bot made by [SinisterDeveloper](https://discord.com/users/778140362790404158) to help Discord users, whether they are developers or normal users who want to improve their server.
 
 ### Important:
 
