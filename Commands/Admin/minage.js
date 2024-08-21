@@ -1,13 +1,6 @@
 const { prefix } = require('../../config.json');
 const SettingsSchema = require('../../Schemas/settings');
 
-function daysElapsed(timestamp) {
-	const now = Date.now();
-	const elapsedMilliseconds = now - new Date(timestamp).getTime();
-	const millisecondsPerDay = 24 * 60 * 60 * 1000;
-	return Math.floor(elapsedMilliseconds / millisecondsPerDay);
-}
-
 module.exports = {
 	name: 'minage',
 	description: 'Sets the minimum account age to join server',
