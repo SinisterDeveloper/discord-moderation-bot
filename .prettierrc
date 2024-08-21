@@ -1,0 +1,7 @@
+{
+	"singleQuote": true,
+	"experimentalTernaries": true,
+	"tabWidth": 4,
+	"useTabs": true,
+	"semi": true
+}

@@ -1,38 +1,42 @@
 {
-  "name": "discord-moderation-bot",
-  "version": "2.0.0",
-  "description": "A customizable Discord moderation bot",
-  "main": "index.js",
-  "scripts": {
-    "build": "npm ci",
-    "start": "node .",
-    "lint": "eslint .",
-    "deploy": "pm2 start index.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/SinisterDeveloper/discord-moderation-bot.git"
-  },
-  "keywords": [
-    "Discord",
-    "bot",
-    "moderation",
-    "database"
-  ],
-  "author": "SinisterDev",
-  "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/SinisterDeveloper/discord-moderation-bot/issues"
-  },
-  "homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
-  "dependencies": {
-    "discord.js": "^13.0.1",
-    "mongoose": "^8.4.1"
-  },
-  "optionalDependencies": {
-    "bufferutil": "^4.0.3",
-    "erlpack": "github:discord/erlpack",
-    "utf-8-validate": "^5.0.5",
-    "zlib-sync": "^0.1.7"
-  }
+	"name": "discord-moderation-bot",
+	"version": "2.0.0",
+	"description": "A customizable Discord moderation bot",
+	"main": "index.js",
+	"scripts": {
+		"build": "npm ci",
+		"start": "node .",
+		"lint": "eslint .",
+		"deploy": "pm2 start index.js",
+		"format": "npx prettier . --write"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SinisterDeveloper/discord-moderation-bot.git"
+	},
+	"keywords": [
+		"Discord",
+		"bot",
+		"moderation",
+		"database"
+	],
+	"author": "SinisterDev",
+	"license": "Apache-2.0",
+	"bugs": {
+		"url": "https://github.com/SinisterDeveloper/discord-moderation-bot/issues"
+	},
+	"homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
+	"dependencies": {
+		"discord.js": "^13.0.1",
+		"mongoose": "^8.4.1"
+	},
+	"optionalDependencies": {
+		"bufferutil": "^4.0.3",
+		"erlpack": "github:discord/erlpack",
+		"utf-8-validate": "^5.0.5",
+		"zlib-sync": "^0.1.7"
+	},
+	"devDependencies": {
+		"prettier": "3.3.3"
+	}
 }

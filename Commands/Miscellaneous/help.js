@@ -6,7 +6,7 @@ module.exports = {
 	description: 'Check the list of commands',
 	cooldown: 3,
 	aliases: ['commands'],
-	category: "miscellaneous",
+	category: 'miscellaneous',
 	permission: `SEND_MESSAGES`,
 	usage: `${prefix}help {command?}`,
 	async execute(message, args, client) {
@@ -20,29 +20,40 @@ module.exports = {
 			const categoryMap = {
 				moderation,
 				miscellaneous,
-				administration
+				administration,
 			};
 
-			commands.forEach(c => {
+			commands.forEach((c) => {
 				if (categoryMap[c.category]) {
 					categoryMap[c.category].push(`\`${c.name}\``);
 				}
 			});
 
-			const helpEmbed = await miscEmbed.help(miscellaneous, moderation, administration);
+			const helpEmbed = await miscEmbed.help(
+				miscellaneous,
+				moderation,
+				administration,
+			);
 
-			await message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
-		}
-		else {
+			await message.reply({
+				embeds: [helpEmbed],
+				allowedMentions: { repliedUser: false },
+			});
+		} else {
 			const name = args[0].toLowerCase();
-			const command = commands.get(name) || commands.find(c => c.aliases && c.aliases.includes(name));
+			const command =
+				commands.get(name) ||
+				commands.find((c) => c.aliases && c.aliases.includes(name));
 
 			if (!command) {
 				return message.reply({ content: 'Invalid command!' });
 			}
 
 			const helpEmbed = miscEmbed.sendUsage(command);
-			await message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
+			await message.reply({
+				embeds: [helpEmbed],
+				allowedMentions: { repliedUser: false },
+			});
 		}
-	}
+	},
 };

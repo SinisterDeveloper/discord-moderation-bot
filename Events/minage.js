@@ -4,7 +4,7 @@ function daysElapsed(timestamp) {
 	const now = Date.now();
 	const elapsedMilliseconds = now - new Date(timestamp).getTime();
 	const millisecondsPerDay = 24 * 60 * 60 * 1000;
-	return (elapsedMilliseconds / millisecondsPerDay);
+	return elapsedMilliseconds / millisecondsPerDay;
 }
 
 module.exports = {
@@ -16,13 +16,20 @@ module.exports = {
 		if (accountAge >= minAge) return;
 
 		let kickNotificationDM = EMBEDS.moderationCommands.punishNotificationDM;
-		kickNotificationDM.setDescription(`You were kicked from **${member.guild.name}** for: Account created ${accountAge} days ago, below minimum account age requirement of ${minAge} days.`);
+		kickNotificationDM.setDescription(
+			`You were kicked from **${member.guild.name}** for: Account created ${accountAge} days ago, below minimum account age requirement of ${minAge} days.`,
+		);
 		try {
 			await member.send({ embeds: [kickNotificationDM] });
 		} catch (e) {
-			console.log('Unable to send Minage Kick notification to ' + member.user.username);
+			console.log(
+				'Unable to send Minage Kick notification to ' +
+					member.user.username,
+			);
 		} finally {
-			await member.kick({reason: `Account created ${accountAge} days ago, below minimum account age requirement of ${minAge} days.`});
+			await member.kick({
+				reason: `Account created ${accountAge} days ago, below minimum account age requirement of ${minAge} days.`,
+			});
 		}
-	}
+	},
 };
