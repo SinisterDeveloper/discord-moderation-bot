@@ -1,51 +1,96 @@
 const fs = require('fs');
-const { Client, Collection, Intents } = require('discord.js');
+const { Client, Intents } = require('discord.js');
 const mongoose = require('mongoose');
-const { prefix, token, defaultCooldown, MongoConnectionUrl } = require('./config.json');
-const { miscellaneous }= require('./Assets/Static/embeds');
+const {
+	prefix,
+	token,
+	defaultCooldown,
+	MongoConnectionUrl,
+} = require('./config.json');
+const { miscellaneous } = require('./Assets/Static/embeds');
+const Modlogs = require('./Schemas/modlog');
+const Settings = require('./Schemas/settings');
+const { updateModlog } = require('./Assets/util');
 
-// Database Connection
-mongoose.connect(MongoConnectionUrl, { useUnifiedTopology: true, useNewUrlParser: true, useFindAndModify: false })
-	.then(() => console.log('Connected to Database.'))
-	.catch((error) => console.log(error));
+async function connect() {
+	mongoose
+		.connect(MongoConnectionUrl, {
+			dbName: 'moderation-bot',
+		})
+		.then(async () => {
+			console.log('Established connection with Database');
+			await fetchData();
+			console.log('Successfully fetched data from the database');
+		})
+		.catch((error) => console.error(error));
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_BANS], allowedMentions: { repliedUser: true } });
+	client.login(token).then(() => console.log(`Token authenticated!`));
+}
 
-client.commands = new Collection();
-client.cooldowns = new Collection();
+const client = new Client({
+	intents: [
+		Intents.FLAGS.GUILDS,
+		Intents.FLAGS.GUILD_MESSAGES,
+		Intents.FLAGS.GUILD_BANS,
+		Intents.FLAGS.GUILD_MEMBERS,
+	],
+	allowedMentions: { repliedUser: true },
+});
+
+client.commands = new Map();
+client.cooldowns = new Map();
+client.modlogs = new Map();
+client.muteRoles = new Map();
+client.minage = new Map();
 
 // Events
-const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
+const eventFiles = fs
+	.readdirSync('./Events')
+	.filter((file) => file.endsWith('.js'));
 for (const file of eventFiles) {
-	const event = require(`./events/${file}`);
+	const event = require(`./Events/${file}`);
 	if (event.once) {
-		client.once(event.name, async (...args) => await event.execute(...args, client));
+		client.once(
+			event.name,
+			async (...args) => await event.execute(client, ...args),
+		);
 	} else {
-		client.on(event.name, async (...args) => await event.execute(...args, client));
+		client.on(
+			event.name,
+			async (...args) => await event.execute(client, ...args),
+		);
 	}
 }
 
-const commandFolders = fs.readdirSync('./commands');
+const commandFolders = fs.readdirSync('./Commands');
 for (const folder of commandFolders) {
-	const commandFiles = fs.readdirSync(`./commands/${folder}`).filter(file => file.endsWith('.js'));
+	const commandFiles = fs
+		.readdirSync(`./Commands/${folder}`)
+		.filter((file) => file.endsWith('.js'));
 	for (const file of commandFiles) {
-		const command = require(`./commands/${folder}/${file}`);
+		const command = require(`./Commands/${folder}/${file}`);
 		client.commands.set(command.name, command);
 	}
 }
 
 // Command Handler
-client.on('messageCreate', async message => {
-	if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
+client.on('messageCreate', async (message) => {
+	if (
+		!message.content.startsWith(prefix) ||
+		message.author.bot ||
+		!message.guild
+	)
+		return;
 
-	const args = message.content
-		.slice(prefix.length)
-		.trim()
-		.split(/ +/);
+	const args = message.content.slice(prefix.length).trim().split(/ +/);
 
 	const commandName = args.shift().toLowerCase();
 
-	const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
+	const command =
+		client.commands.get(commandName) ||
+		client.commands.find(
+			(cmd) => cmd.aliases && cmd.aliases.includes(commandName),
+		);
 
 	if (!command) return;
 
@@ -56,24 +101,30 @@ client.on('messageCreate', async message => {
 
 	let permissions = message.channel.permissionsFor(message.member);
 
-	if (!permissions || !permissions.has(command.permission)) return message.reply({ content: 'You do not have permission to use this command!' });
+	if (!permissions || !permissions.has(command.permission))
+		return message.reply({
+			content: 'You do not have permission to use this command!',
+		});
 
 	const { cooldowns } = client;
 
-	if (!cooldowns.has(command.name)) {
-		cooldowns.set(command.name, new Collection());
-	}
+	if (!cooldowns.has(command.name))
+		cooldowns.set(command.name, new Map());
+
 
 	const now = Date.now();
 	const timestamps = cooldowns.get(command.name);
 	const cooldownAmount = (command.cooldown || defaultCooldown) * 1000; // Default cooldown time would be 1 second
 
 	if (timestamps.has(message.author.id)) {
-		const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
+		const expirationTime =
+			timestamps.get(message.author.id) + cooldownAmount;
 
 		if (now < expirationTime) {
 			const timeLeft = (expirationTime - now) / 1000;
-			return message.reply(`Please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
+			return message.reply(
+				`Please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`,
+			);
 		}
 	}
 
@@ -84,13 +135,29 @@ client.on('messageCreate', async message => {
 		command.execute(message, args, client);
 	} catch (error) {
 		console.error(error);
-		await message.channel.send(`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``);
+		await message.channel.send(
+			`Error occurred while executing the command! \n**Error:**\n\`\`\`js\n${error.message}${error.stack.substr(0, 800)}\`\`\``,
+		);
 	}
 });
 
-process.on('unhandledRejection', error => {
+async function fetchData() {
+	for (const modlog of await Modlogs.find({}))
+		updateModlog(client, modlog.User, {
+			server: modlog.Guild,
+			modlog: modlog,
+		});
+
+	for (const setting of await Settings.find({})) {
+		if (setting.MuteRoleID)
+			client.muteRoles.set(setting.GuildID, setting.MuteRoleID);
+		if (setting.MinimumAge)
+			client.minage.set(setting.GuildID, setting.MinimumAge);
+	}
+}
+
+process.on('unhandledRejection', (error) => {
 	console.error('Unhandled promise rejection:', error);
 });
 
-client.login(token)
-	.then(() => console.log(`Valid token..`));
+connect().catch((e) => console.error(e));

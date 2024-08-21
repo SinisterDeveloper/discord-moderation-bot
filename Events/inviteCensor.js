@@ -1,46 +1,33 @@
 module.exports = {
-    name: `messageCreate`,
-    async execute(message) {
-        if (message.author.bot || !message.guild) return;
-        if (message.channel.permissionsFor(message.member).has(`ADMINISTRATOR`)) return; // Checks if the member is server admin
+	name: `messageCreate`,
+	async execute(client, message) {
+		if (message.author.bot || !message.guild) return;
+		if (message.channel.permissionsFor(message.member).has(`ADMINISTRATOR`))
+			return;
 
-        const { guild, content } = message;
+		const { guild, content } = message;
 
-        const isInvite = async (server, code) => {
-            return await new Promise((resolve) => {
-                server.fetchInvites().then((invites) => {
-                    for (const invite of invites) {
-                        if (code === invite[0]) {
-                            resolve(true);
-                            return;
-                        }
-                    }
+		async function isOwnInvite(guild, inviteCode) {
+			const invites = await guild.invites.fetch();
+			let isOwn = false;
+			for (const invite of invites) {
+				if (inviteCode === invite.code) {
+					isOwn = true;
+					break;
+				}
+			}
+		}
+		const code = content.split('discord.gg/')[1];
+		if (content.includes('discord.gg/')) {
+			const isOurInvite = await isOwnInvite(guild, code);
 
-                    resolve(false);
-                });
-            });
-        };
-
-        const code = content.split('discord.gg/')[1];
-
-        if (content.includes('discord.gg/')) {
-
-            const isOurInvite = await isInvite(guild, code);
-
-            if (!isOurInvite) {
-                await message.delete();
-                await message.channel.send({ content: `Invite links are not allowed here ${message.member}.` })
-                    .then(resultMessage => {
-                    function sleep(ms) {
-                        return new Promise(
-                            resolve => setTimeout(resolve, ms));
-                    }
-                    sleep(5000)
-                        .then(() => {
-                            resultMessage.delete();
-                        });
-                });
-            }
-        }
-    }
+			if (!isOurInvite) {
+				await message.delete();
+				const alertMessage = await message.channel.send({
+					content: `Invite links are not allowed here, ${message.member}!`,
+				});
+				setTimeout(() => alertMessage.delete(), 5000);
+			}
+		}
+	},
 };
