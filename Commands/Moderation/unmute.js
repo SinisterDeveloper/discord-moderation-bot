@@ -28,7 +28,7 @@ module.exports = {
 		punishNotificationChannel.setDescription(`**${toUnmute.user.tag}** has been unmuted for: ${reason}`);
 
 		try {
-			await toUnmute.roles.remove([muteRole.RoleID], `Member was unmuted`);
+			await toUnmute.roles.remove([muteRole], `Member was unmuted`);
 			message.channel.send({ embeds: [punishNotificationChannel] });
 		} catch (error) {
 			console.log(error);

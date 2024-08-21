@@ -1,5 +1,5 @@
 const { prefix } = require('../../config.json');
-const { miscellaneous }= require('../../Assets/Static/embeds');
+const miscEmbed = require('../../Assets/Static/embeds').miscellaneous;
 
 module.exports = {
 	name: 'help',
@@ -13,17 +13,23 @@ module.exports = {
 		const { commands } = client;
 
 		if (!args.length) {
-			let modCommands = [];
-			let miscCommands = [];
-			let adminCommands = []
+			let moderation = [];
+			let miscellaneous = [];
+			let administration = [];
+
+			const categoryMap = {
+				moderation,
+				miscellaneous,
+				administration
+			};
 
 			commands.forEach(c => {
-				if (c.category === "miscellaneous") miscCommands.push(c.name);
-				else if (c.category === "moderation") modCommands.push(c.name);
-				else adminCommands.push(c.name);
+				if (categoryMap[c.category]) {
+					categoryMap[c.category].push(`\`${c.name}\``);
+				}
 			});
 
-			const helpEmbed = await miscellaneous.help(miscCommands, modCommands);
+			const helpEmbed = await miscEmbed.help(miscellaneous, moderation, administration);
 
 			await message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
 		}
@@ -35,7 +41,7 @@ module.exports = {
 				return message.reply({ content: 'Invalid command!' });
 			}
 
-			const helpEmbed = await miscellaneous.sendUsage(command);
+			const helpEmbed = miscEmbed.sendUsage(command);
 			await message.reply({ embeds: [helpEmbed], allowedMentions: { repliedUser: false } });
 		}
 	}

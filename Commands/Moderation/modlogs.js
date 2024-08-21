@@ -28,7 +28,7 @@ module.exports = {
 		docs = docs.reverse();
 		
 		const modlogsEmbed = new MessageEmbed()
-			.setTitle(`Modlogs for ${toCheck.tag}`)
+			.setTitle(`Modlogs for ${toCheck.username}`)
 			.setTimestamp()
 			.setColor(colors.accentColor);
 
@@ -38,7 +38,7 @@ module.exports = {
 		for (const doc of docs) {
 			const date = new Date(doc.Date);
 			let moderator = await client.users.fetch(doc.Moderator);
-			modlogsEmbed.addField(`${num}) Case Id: ${doc._id.toString()}`, `**Type**: ${doc.Type}\n**Moderator**: ${moderator.tag}\n**Reason:** ${doc.Reason}\n**Created at**: ${date.toDateString()}\n`);
+			modlogsEmbed.addField(`**Type**: ${doc.Type}`, `**Moderator**: ${moderator.tag}\n**Reason:** ${doc.Reason}\n**Created at**: ${date.toDateString()}\n`);
 			num++;
 		}
 

@@ -55,29 +55,14 @@ function sendUsage(command) {
 	return usageEmbed;
 }
 
-/**
- *
- * @param {commands[]} misc An array of Miscellaneous commands
- * @param {commands[]} mod An array of Moderation commands
- */
-function sendHelp(misc, mod) {
-	let modCommand = [];
-	let miscCommand = [];
-
-	misc.forEach(c => {
-		miscCommand.push(`\`${c}\``);
-	});
-	mod.forEach(c => {
-		modCommand.push(`\`${c}\``);
-	});
-
+function sendHelp(misc, mod, admin) {
 	return new MessageEmbed()
 		.setColor(colors.accentColor)
 		.setTimestamp()
 		.setTitle(`Commands`)
-		.addField(`Administration`, modCommand.length ? modCommand.join(', ') : "There are no Moderation commands, very strange...")
-		.addField(`Miscellaneous`, miscCommand.length ? miscCommand.join(', ') : "There are no Miscellaneous commands, very strange...")
-		.addField(`Moderation`, modCommand.length ? modCommand.join(', ') : "There are no Moderation commands, very strange...");
+		.addField(`Administration`, admin.length ? admin.join(', ') : "There are no Administration commands, very strange...")
+		.addField(`Miscellaneous`, misc.length ? misc.join(', ') : "There are no Miscellaneous commands, very strange...")
+		.addField(`Moderation`, mod.length ? mod.join(', ') : "There are no Moderation commands, very strange...");
 
 }
 

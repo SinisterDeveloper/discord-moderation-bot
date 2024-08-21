@@ -110,7 +110,7 @@ async function fetchData() {
 		updateModlog(client, modlog.User, { server: modlog.Guild, modlog: modlog });
 
 	for (const setting of await Settings.find({})) {
-		if (setting.MuteRoleID) client.muteRoles.set(setting.GuildID, setting.RoleID);
+		if (setting.MuteRoleID) client.muteRoles.set(setting.GuildID, setting.MuteRoleID);
 		if (setting.MinimumAge) client.minage.set(setting.GuildID, setting.MinimumAge);
 	}
 }

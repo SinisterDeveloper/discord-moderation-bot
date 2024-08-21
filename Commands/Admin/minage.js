@@ -12,7 +12,7 @@ module.exports = {
 	name: 'minage',
 	description: 'Sets the minimum account age to join server',
 	cooldown: 3,
-	category: "administrator",
+	category: "administration",
 	aliases: [],
 	requireArgs: true,
 	permission: `ADMINISTRATOR`,
