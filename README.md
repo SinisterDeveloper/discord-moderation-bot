@@ -88,7 +88,7 @@ If you are deploying this for an event or production, you should use [PM2](https
 ```bash
 npm i -g pm2
 
-npm run production
+npm run deploy
 ```
 
 The bot should come online within a few seconds if you did the above steps correctly.
