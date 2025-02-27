@@ -17,6 +17,7 @@ module.exports = {
 			toCheck =
 				message.mentions.users.first() ||
 				(await client.users.fetch(args[0], { cache: true }));
+
 		} catch (e) {
 			if (e.httpStatus === 404)
 				return message.reply({
@@ -28,13 +29,16 @@ module.exports = {
 				});
 		}
 
-		let docs = client.modlogs.get(toCheck.id)[message.guild.id];
+		let docs = client.modlogs.get(toCheck.id);
+
+		if (docs) docs = docs[message.guild.id];
 
 		if (!docs || !docs.length)
 			return message.reply({
-				content: `No modlogs found for \`${toCheck.tag}\``,
+				content: `No modlogs found for \`${toCheck.username}\``,
 				allowedMentions: { repliedUser: false },
 			});
+
 
 		docs = docs.reverse();
 
