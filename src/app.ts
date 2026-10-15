@@ -4,6 +4,7 @@ import { readEnvironment } from './config.js';
 import { createClient } from './discord/client.js';
 import { startHealth } from './health.js';
 import { logger, errorCode } from './logger.js';
+import { MongoStore } from './storage/store.js';
 async function main() {
   const env = readEnvironment();
   const client = createClient({
@@ -62,6 +63,9 @@ async function main() {
       dbName: env.MONGODB_DATABASE,
       serverSelectionTimeoutMS: 10_000,
     });
+    const store = new MongoStore(mongoose.connection);
+    await store.init();
+    await store.recover();
     await client.login(env.DISCORD_TOKEN);
     logger.info('Bot started.');
   } catch (error) {
