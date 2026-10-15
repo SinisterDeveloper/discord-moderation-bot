@@ -1,0 +1,19 @@
+name: Checks
+on:
+  push:
+    branches: [dev, Stable]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.0
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:storage

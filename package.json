@@ -1,42 +1,60 @@
 {
-	"name": "discord-moderation-bot",
-	"version": "2.1.0",
-	"description": "A customizable Discord moderation bot",
-	"main": "index.js",
-	"scripts": {
-		"build": "npm ci",
-		"start": "node .",
-		"lint": "eslint .",
-		"deploy": "pm2 start index.js",
-		"format": "npx prettier . --write"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/SinisterDeveloper/discord-moderation-bot.git"
-	},
-	"keywords": [
-		"Discord",
-		"bot",
-		"moderation",
-		"database"
-	],
-	"author": "SinisterDev",
-	"license": "Apache-2.0",
-	"bugs": {
-		"url": "https://github.com/SinisterDeveloper/discord-moderation-bot/issues"
-	},
-	"homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
-	"dependencies": {
-		"discord.js": "^13.0.1",
-		"mongoose": "^8.4.1"
-	},
-	"optionalDependencies": {
-		"bufferutil": "^4.0.3",
-		"erlpack": "github:discord/erlpack",
-		"utf-8-validate": "^5.0.5",
-		"zlib-sync": "^0.1.7"
-	},
-	"devDependencies": {
-		"prettier": "3.3.3"
-	}
+  "name": "discord-moderation-bot",
+  "version": "3.0.0",
+  "description": "A customizable Discord moderation bot",
+  "main": "dist/src/app.js",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/src/app.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src scripts tests",
+    "format": "prettier --write src scripts tests '*.json' '*.md' '.github/**/*.yml'",
+    "format:check": "prettier --check src scripts tests '*.json' '*.md' '.github/**/*.yml'",
+    "test": "vitest run --exclude 'tests/storage.integration.test.ts'",
+    "test:storage": "vitest run tests/storage.integration.test.ts",
+    "commands:deploy": "tsx --env-file-if-exists=.env scripts/deploy.ts",
+    "migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "export": "tsx --env-file-if-exists=.env scripts/export.ts",
+    "test:live": "tsx --env-file-if-exists=.env scripts/live.ts",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SinisterDeveloper/discord-moderation-bot.git"
+  },
+  "keywords": [
+    "Discord",
+    "bot",
+    "moderation",
+    "database"
+  ],
+  "author": "SinisterDev",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/SinisterDeveloper/discord-moderation-bot/issues"
+  },
+  "homepage": "https://github.com/SinisterDeveloper/discord-moderation-bot#readme",
+  "dependencies": {
+    "discord.js": "14.27.0",
+    "mongoose": "9.11.2",
+    "pino": "10.4.0",
+    "zod": "4.6.7"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.17.0 <25"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.12.0",
+    "mongodb-memory-server": "11.3.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "4.1.11"
+  }
 }

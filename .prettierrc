@@ -1,7 +1,6 @@
 {
-	"singleQuote": true,
-	"experimentalTernaries": true,
-	"tabWidth": 4,
-	"useTabs": true,
-	"semi": true
+  "singleQuote": true,
+  "tabWidth": 2,
+  "printWidth": 100,
+  "semi": true
 }
