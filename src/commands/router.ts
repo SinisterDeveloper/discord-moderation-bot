@@ -12,7 +12,7 @@ import {
   type Interaction,
   type InteractionEditReplyOptions,
 } from 'discord.js';
-import { parseDuration, reasonSchema, snowflake, type Capabilities } from '../config.js';
+import { parseDuration, parseReason, snowflake, type Capabilities } from '../config.js';
 import {
   UserError,
   type Action,
@@ -295,9 +295,7 @@ export class CommandRouter {
             .join('\n')}`.slice(0, 1950),
         };
       const kind = sub === 'reason' ? 'reason' : sub === 'revoke' ? 'revoke' : 'resolve';
-      const value = reasonSchema.parse(
-        o.getString(kind === 'resolve' ? 'evidence' : 'reason', true),
-      );
+      const value = parseReason(o.getString(kind === 'resolve' ? 'evidence' : 'reason', true));
       const outcome =
         kind === 'resolve' ? (o.getString('outcome', true) as 'succeeded' | 'failed') : undefined;
       const changed = await this.store.changeCase(
@@ -365,7 +363,7 @@ export class CommandRouter {
       source: 'manual',
       requestKey: interaction.id,
       action,
-      reason: reasonSchema.parse(o.getString('reason', true)),
+      reason: parseReason(o.getString('reason', true)),
     };
     if (action === 'timeout') request.durationMs = parseDuration(o.getString('duration', true));
     if (action === 'ban' || action === 'kick') {

@@ -14,13 +14,16 @@ import {
 import { z } from 'zod';
 import { readEnvironment, snowflake } from '../src/config.js';
 import { createClient } from '../src/discord/client.js';
-import { ScopedDiscordAdapter, ScopedNativePort } from '../src/live/adapters.js';
+import {
+  LiveModerationService,
+  ScopedDiscordAdapter,
+  ScopedNativePort,
+} from '../src/live/adapters.js';
 import { CommandRouter } from '../src/commands/router.js';
 import { DeliveryWorker } from '../src/delivery.js';
 import { UserError, type Action, type GuildSettings } from '../src/domain.js';
 import { errorCode } from '../src/logger.js';
-import { assertLiveScope, assertLiveTarget, liveScope } from '../src/live/scope.js';
-import { ModerationService } from '../src/moderation/service.js';
+import { assertLiveScope, assertLiveTarget, liveScope, liveSettings } from '../src/live/scope.js';
 import { AutoModManager } from '../src/policies/automod.js';
 import { attachPolicies } from '../src/policies/events.js';
 import { MongoStore } from '../src/storage/store.js';
@@ -33,8 +36,12 @@ const { values } = parseArgs({
 const mode = z
   .enum(['preflight', 'services', 'interactive', 'kick', 'ban', 'membership'])
   .parse(values.mode);
-const seconds = z.coerce.number().int().min(30).max(1800).parse(values.seconds);
-const startedAt = new Date();
+const seconds = z.coerce
+  .number()
+  .int()
+  .max(1800)
+  .refine((value) => value === 0 || value >= 30, 'Use 0, or 30–1800 seconds.')
+  .parse(values.seconds);
 const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 6)}`;
 const report = {
   runId,
@@ -152,10 +159,7 @@ try {
     report.resources.baselineSettings = structuredClone(baseline);
     report.resources.originalTimeout = originalTimeout?.toISOString() ?? null;
     await save();
-    const settings = structuredClone(baseline);
-    settings.logChannelId = s.channelId;
-    settings.dmEnabled = false;
-    await store.saveSettings(settings);
+    await store.saveSettings(liveSettings(baseline));
     const interactive = mode === 'interactive';
     const capabilities = { memberEvents: interactive, messageFilter: interactive };
     client = createClient(capabilities);
@@ -165,7 +169,7 @@ try {
     await ready;
     await pass('Gateway connection');
     const adapter = new ScopedDiscordAdapter(client);
-    const service = new ModerationService(store, adapter);
+    const service = new LiveModerationService(store, adapter, runId);
     const native = new AutoModManager(store, new ScopedNativePort(client));
     const nativePort = new ScopedNativePort(client);
     for (const rule of await nativePort.list(s.guildId)) initialRules.add(rule.id);
@@ -379,7 +383,7 @@ try {
         }
       });
       console.log(
-        `Interactive checks are ready for ${seconds} seconds. Run commands in the authorized server. Press Ctrl+C to finish and clean up.`,
+        `Interactive checks are ready ${seconds ? `for ${seconds} seconds` : 'until stopped'}. Run commands in the authorized server. Press Ctrl+C to finish and clean up.`,
       );
       await new Promise<void>((resolve) => {
         const end = () => {
@@ -388,7 +392,7 @@ try {
           process.removeListener('SIGTERM', end);
           resolve();
         };
-        const timer = setTimeout(end, seconds * 1000);
+        const timer = seconds ? setTimeout(end, seconds * 1000) : undefined;
         process.once('SIGINT', end);
         process.once('SIGTERM', end);
       });
@@ -398,7 +402,7 @@ try {
           guildId: s.guildId,
           targetId: s.targetId,
           source: { $in: ['account_age', 'invite_filter'] },
-          createdAt: { $gte: startedAt },
+          runId,
         })
         .lean();
       for (const record of observed)

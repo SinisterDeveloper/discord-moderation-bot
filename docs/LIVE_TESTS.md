@@ -26,16 +26,16 @@ npm run test:live -- --mode services
 
 This verifies a saved warning, request deduplication, history, amendment, revocation, timeout and release, legacy-role release, owned AutoMod application, and staff-log delivery. These are API/service tests. They do not prove real slash-command or message-policy behavior.
 
-The runner restores the target's original timeout and test settings. It removes only roles and AutoMod rules created by the run. Reports identify cleanup failures. If a process is forcibly killed before cleanup, use its case records, test role name, rule ownership markers, and review notes to restore the baseline. Do not remove pre-existing resources.
+Each run uses fresh preset identifiers and starts bot-run policies disabled. It tags API, command, and policy cases with its run ID. The runner restores the target's original timeout and test settings. It removes only roles and AutoMod rules created by the run. Reports identify cleanup failures. If a process is forcibly killed before cleanup, use its case records, test role name, rule ownership markers, and review notes to restore the baseline. Do not remove pre-existing resources.
 
 ## Real interactions and policy events
 
 ```sh
 npm run commands:deploy -- --guild 1108716196024561764
-npm run test:live -- --mode interactive --seconds 1800
+npm run test:live -- --mode interactive --seconds 0
 ```
 
-The runner accepts interactions only in the approved server and channel. Moderation targets only the disposable member. Policy listeners also restrict checks to that member. Enable member events and message content access in the Developer Portal first. The runner stops when the selected time expires; the maximum is 30 minutes. It must stay connected while a person tests commands.
+The runner accepts interactions only in the approved server and channel. Moderation targets only the disposable member. Policy listeners also restrict checks to that member. Enable member events and message content access in the Developer Portal first. With `--seconds 0`, it stays connected until you stop it with Ctrl+C. For a timed run, choose 30–1800 seconds. Keep it connected while a person tests commands, then stop it to restore settings and remove test resources.
 
 A moderator must invoke `/ping`, `/doctor`, `/setup`, `/warn`, `/cases`, `/case view`, case amendments, and timeout commands in Discord. Confirm that replies remain private. Test denied permissions with a suitable human participant. Do not use user-account automation.
 

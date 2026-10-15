@@ -85,6 +85,34 @@ describe('interaction handling', () => {
     expect(f.discord.perform).not.toHaveBeenCalled();
     expect(f.store.insertCase).not.toHaveBeenCalled();
   });
+  it('rejects policy activation when the runtime capability is disabled', async () => {
+    const f = fixture();
+    const client = {
+      guilds: {
+        fetch: async () => ({
+          ownerId: actorId,
+          members: { fetch: async () => ({ id: actorId }) },
+        }),
+      },
+    } as unknown as Client;
+    const router = new CommandRouter(client, f.store, new ModerationService(f.store, f.discord), {
+      memberEvents: false,
+      messageFilter: false,
+    });
+    const i = {
+      ...interaction('config'),
+      deferred: true,
+      options: {
+        getSubcommand: () => 'account-age',
+        getBoolean: () => true,
+      },
+    };
+    expect(await router.handle(i as unknown as ChatInputCommandInteraction)).toBe(false);
+    expect(i.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('Enable member events') }),
+    );
+    expect(f.store.saveSettings).not.toHaveBeenCalled();
+  });
 });
 afterEach(() => vi.useRealTimers());
 describe('commands and permissions', () => {

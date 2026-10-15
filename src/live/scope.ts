@@ -1,9 +1,18 @@
-import { UserError } from '../domain.js';
+import { UserError, defaultSettings, type GuildSettings } from '../domain.js';
 export const liveScope = {
   guildId: '1108716196024561764',
   channelId: '1560181480427225159',
   targetId: '852903412462387213',
 } as const;
+export function liveSettings(baseline: GuildSettings): GuildSettings {
+  assertLiveScope(baseline.guildId, liveScope.channelId, liveScope.targetId);
+  return {
+    ...defaultSettings(baseline.guildId),
+    version: baseline.version,
+    logChannelId: liveScope.channelId,
+    dmEnabled: false,
+  };
+}
 export function assertLiveScope(guildId: string, channelId: string, targetId: string) {
   if (
     guildId !== liveScope.guildId ||

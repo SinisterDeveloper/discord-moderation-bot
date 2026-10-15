@@ -1,4 +1,4 @@
-import { reasonSchema, snowflake } from '../config.js';
+import { parseReason, snowflake } from '../config.js';
 import {
   ActionFailure,
   UserError,
@@ -31,7 +31,7 @@ export class ModerationService {
     snowflake.parse(request.guildId);
     snowflake.parse(request.targetId);
     snowflake.parse(request.actorId);
-    request = { ...request, reason: reasonSchema.parse(request.reason) };
+    request = { ...request, reason: parseReason(request.reason) };
     if (
       request.action === 'timeout' &&
       (!request.durationMs || request.durationMs < 1000 || request.durationMs > 2_419_200_000)

@@ -1,4 +1,5 @@
-import { PermissionFlagsBits as P } from 'discord.js';
+import { EventEmitter } from 'node:events';
+import { Events, PermissionFlagsBits as P, type Client } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   InviteResolver,
@@ -8,6 +9,7 @@ import {
 } from '../src/policies/service.js';
 import { AutoModManager, type NativePort, type NativeRule } from '../src/policies/automod.js';
 import { ModerationService } from '../src/moderation/service.js';
+import { attachPolicies } from '../src/policies/events.js';
 import { actorId, fixture, guildId, targetId } from './helpers.js';
 function policyFixture() {
   const f = fixture();
@@ -121,6 +123,48 @@ describe('bot-run policies', () => {
     vi.mocked(f.store.available).mockReturnValue(false);
     await f.policies.message(message('discord.gg/external'));
     expect(f.lookup).not.toHaveBeenCalled();
+  });
+  it('fetches an uncached edit before applying invite filtering', async () => {
+    const f = fixture();
+    f.settings.invites.enabled = true;
+    const client = Object.assign(new EventEmitter(), {
+      user: { id: actorId },
+      fetchInvite: vi.fn(async () => ({ guild: { id: '1108716196024561765' } })),
+    });
+    attachPolicies(
+      client as unknown as Client,
+      f.store,
+      new ModerationService(f.store, f.discord),
+      { memberEvents: false, messageFilter: true },
+      { guildId, targetId, channelId: '1560181480427225159' },
+    );
+    const full = {
+      ...message('discord.gg/external'),
+      id: '1560181480427225160',
+      author: { id: targetId, bot: false },
+      guild: {
+        id: guildId,
+        members: {
+          fetch: vi.fn(async () => ({
+            permissions: { has: () => false, bitfield: 0n },
+            roles: { cache: new Map() },
+          })),
+        },
+      },
+    };
+    const fetch = vi.fn(async () => full);
+    client.emit(Events.MessageUpdate, null, {
+      guildId,
+      channelId: full.channelId,
+      partial: true,
+      fetch,
+    });
+    await vi.waitFor(() => expect(f.discord.perform).toHaveBeenCalledOnce());
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(f.store.insertCase).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'invite_delete', messageId: full.id }),
+      expect.anything(),
+    );
   });
 });
 function nativeFixture() {

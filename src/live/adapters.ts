@@ -8,6 +8,21 @@ import {
 } from '../domain.js';
 import { DiscordNativePort, type RuleSpec } from '../policies/automod.js';
 import { assertLiveScope, liveScope } from './scope.js';
+import { ModerationService, type DiscordPort } from '../moderation/service.js';
+import type { Store } from '../storage/store.js';
+export class LiveModerationService extends ModerationService {
+  constructor(
+    store: Store,
+    discord: DiscordPort,
+    private readonly runId: string,
+  ) {
+    super(store, discord);
+  }
+  override execute(request: ActionRequest) {
+    assertLiveScope(request.guildId, request.channelId ?? liveScope.channelId, request.targetId);
+    return super.execute({ ...request, runId: this.runId });
+  }
+}
 export class ScopedDiscordAdapter extends DiscordAdapter {
   private check(request: { guildId: string; targetId: string; channelId?: string }) {
     assertLiveScope(request.guildId, request.channelId ?? liveScope.channelId, request.targetId);
