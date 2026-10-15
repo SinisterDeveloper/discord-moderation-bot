@@ -20,6 +20,11 @@ export class ModerationService {
     private readonly store: Store,
     private readonly discord: DiscordPort,
   ) {}
+  async validate(request: ActionRequest) {
+    if (!this.store.available())
+      throw new UserError('The database is unavailable. No action was performed.', 'UNAVAILABLE');
+    return this.discord.authorize(request, await this.store.getSettings(request.guildId));
+  }
   async execute(
     request: ActionRequest,
   ): Promise<{ record: ModerationCase | null; duplicate: boolean; noop: boolean }> {
@@ -73,7 +78,13 @@ export class ModerationService {
           noop: false,
         };
       }
-      if (state === 'succeeded' && (await this.store.claimDM(request.guildId, record.id))) {
+      let sendDM = false;
+      try {
+        sendDM = state === 'succeeded' && (await this.store.claimDM(request.guildId, record.id));
+      } catch {
+        logger.warn({ caseId: record.id }, 'DM delivery could not be started.');
+      }
+      if (sendDM) {
         let dmError: string | null = null;
         try {
           await this.discord.sendDM(finished);
