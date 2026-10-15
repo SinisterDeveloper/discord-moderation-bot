@@ -9,6 +9,8 @@ export const actions = [
   'legacy_unmute',
   'account_age_alert',
   'invite_delete',
+  'legacy_mute',
+  'legacy_unknown',
 ] as const;
 export type Action = (typeof actions)[number];
 export type CaseState =

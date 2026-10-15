@@ -10,6 +10,8 @@ export const actionPermissions = {
   legacy_unmute: P.ModerateMembers,
   account_age_alert: 0n,
   invite_delete: P.ManageMessages,
+  legacy_mute: 0n,
+  legacy_unknown: 0n,
 };
 export const botPermissions = { ...actionPermissions, warn: 0n, legacy_unmute: P.ManageRoles };
 export interface PermissionContext {

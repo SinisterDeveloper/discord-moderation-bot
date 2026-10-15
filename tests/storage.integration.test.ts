@@ -3,6 +3,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoStore } from '../src/storage/store.js';
 import { actorId, guildId, request, targetId } from './helpers.js';
+import { importLegacy, inspectLegacy, type LegacySource } from '../src/storage/migration.js';
 let server: MongoMemoryServer;
 let connection: mongoose.Connection;
 let store: MongoStore;
@@ -19,6 +20,37 @@ afterAll(async () => {
   await server?.stop();
 });
 describe('MongoDB storage', () => {
+  it('imports twice without duplicates or overwriting existing v3 settings', async () => {
+    const importedGuild = '1108716196024561770';
+    const source: LegacySource = {
+      settings: async function* () {
+        yield { GuildID: importedGuild, MinimumAge: 4 };
+      },
+      cases: async function* () {
+        yield {
+          _id: new mongoose.Types.ObjectId('60a4fd600000000000000001'),
+          Guild: importedGuild,
+          User: targetId,
+          Moderator: actorId,
+          Type: 'Unmute',
+          Reason: 'Historical action',
+          Date: 'bad-date',
+        };
+      },
+    };
+    const preview = await inspectLegacy(source, 'legacy_fixture');
+    const first = await importLegacy(source, 'legacy_fixture', store, preview);
+    expect(first).toEqual({ settingsInserted: 1, casesInserted: 1 });
+    const config = await store.getSettings(importedGuild);
+    config.dmEnabled = false;
+    await store.saveSettings(config);
+    const second = await importLegacy(source, 'legacy_fixture', store, preview);
+    expect(second).toEqual({ settingsInserted: 0, casesInserted: 0 });
+    expect((await store.getSettings(importedGuild)).dmEnabled).toBe(false);
+    expect((await store.listCases(importedGuild, targetId)).records[0]!.state).toBe(
+      'legacy_unverified',
+    );
+  });
   it('keeps server histories separate and deduplicates concurrent insertion', async () => {
     const settings = await store.getSettings(guildId);
     const results = await Promise.all(

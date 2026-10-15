@@ -149,6 +149,9 @@ export class DiscordAdapter implements DiscordPort {
         case 'warn':
         case 'account_age_alert':
           break;
+        case 'legacy_mute':
+        case 'legacy_unknown':
+          throw new ActionFailure('IMPORTED_ACTION_ONLY', true);
       }
     } catch (error) {
       throw failure(error);
