@@ -74,5 +74,8 @@ describe('legacy migration preview', () => {
     expect(record.action).toBe('legacy_unknown');
     expect(record.actorId).toBe('legacy:unknown');
     expect(record.legacy.rawType).toBe('CustomAction');
+    expect(legacyCase({ ...legacyFixture(), Type: 'constructor' }, 'old').action).toBe(
+      'legacy_unknown',
+    );
   });
 });

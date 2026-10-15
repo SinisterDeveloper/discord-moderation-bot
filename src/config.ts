@@ -16,6 +16,7 @@ export const environmentSchema = capabilitiesSchema.extend({
   MONGODB_DATABASE: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/)
+    .max(38)
     .default('moderation_bot_v3'),
   HEALTH_HOST: z.string().default('127.0.0.1'),
   HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(3000),

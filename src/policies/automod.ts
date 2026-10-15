@@ -137,7 +137,7 @@ export class AutoModManager implements NativeCommands {
       if (preset !== 'words') throw new UserError('Categories apply only to word filters.');
       const categories: Record<string, number> = { profanity: 1, sexual: 2, slurs: 3 };
       const entries = input.categories.split(',').map((v) => v.trim().toLowerCase());
-      if (!entries.length || entries.some((v) => !categories[v]))
+      if (!entries.length || entries.some((v) => !Object.hasOwn(categories, v)))
         throw new UserError('Choose comma-separated categories: slurs, profanity, sexual.');
       config.wordCategories = [...new Set(entries.map((v) => categories[v]!))].sort();
     }

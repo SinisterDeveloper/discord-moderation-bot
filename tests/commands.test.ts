@@ -1,10 +1,20 @@
-import { PermissionFlagsBits as P, InteractionContextType } from 'discord.js';
+import {
+  PermissionFlagsBits as P,
+  InteractionContextType,
+  MessageFlags,
+  type Client,
+  type ChatInputCommandInteraction,
+  type ButtonInteraction,
+} from 'discord.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { commandDefinitions } from '../src/commands/definitions.js';
 import { Sessions } from '../src/commands/sessions.js';
 import { checkPermissions, type PermissionContext } from '../src/moderation/permissions.js';
 import { auditReason } from '../src/discord/adapter.js';
-import { actorId, guildId, request } from './helpers.js';
+import { actorId, guildId, targetId, fixture, request } from './helpers.js';
+import { CommandRouter } from '../src/commands/router.js';
+import { ModerationService } from '../src/moderation/service.js';
+import { UserError } from '../src/domain.js';
 const context = (): PermissionContext => ({
   ownerId: '1108716196024561766',
   botId: '1108716196024561767',
@@ -15,6 +25,66 @@ const context = (): PermissionContext => ({
   targetBot: false,
   actorAboveTarget: true,
   botAboveTarget: true,
+});
+describe('interaction handling', () => {
+  const interaction = (commandName: string) => ({
+    commandName,
+    id: '1234567890123456789',
+    guildId,
+    user: { id: actorId },
+    isChatInputCommand: () => true,
+    isButton: () => false,
+    inGuild: () => true,
+    deferReply: vi.fn().mockResolvedValue(undefined),
+    editReply: vi.fn().mockResolvedValue(undefined),
+    reply: vi.fn().mockResolvedValue(undefined),
+    options: {
+      getString: (name: string) => (name === 'target' ? targetId : 'Test reason'),
+    },
+  });
+  it('acknowledges ping privately and returns the connection state', async () => {
+    const f = fixture();
+    const router = new CommandRouter(
+      { ws: { ping: 12 } } as Client,
+      f.store,
+      new ModerationService(f.store, f.discord),
+      { memberEvents: false, messageFilter: false },
+    );
+    const i = interaction('ping');
+    expect(await router.handle(i as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(i.editReply).toHaveBeenCalledWith({
+      content: 'Pong. Gateway: 12 ms. Database: ready.',
+    });
+  });
+  it('checks permissions again when a moderator confirms a ban', async () => {
+    const f = fixture();
+    vi.mocked(f.discord.authorize)
+      .mockResolvedValueOnce('allowed')
+      .mockRejectedValueOnce(new UserError('Permission changed.'));
+    const router = new CommandRouter(
+      {} as Client,
+      f.store,
+      new ModerationService(f.store, f.discord),
+      { memberEvents: false, messageFilter: false },
+    );
+    const i = interaction('ban');
+    await router.handle(i as unknown as ChatInputCommandInteraction);
+    const response = i.editReply.mock.calls[0]![0];
+    const customId = response.components[0].toJSON().components[0].custom_id;
+    const button = {
+      ...i,
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId,
+      update: vi.fn().mockResolvedValue(undefined),
+      deferred: true,
+    };
+    expect(await router.handle(button as unknown as ButtonInteraction)).toBe(false);
+    expect(f.discord.authorize).toHaveBeenCalledTimes(2);
+    expect(f.discord.perform).not.toHaveBeenCalled();
+    expect(f.store.insertCase).not.toHaveBeenCalled();
+  });
 });
 afterEach(() => vi.useRealTimers());
 describe('commands and permissions', () => {
@@ -113,5 +183,6 @@ describe('commands and permissions', () => {
     const text = auditReason(request({ reason: 'é'.repeat(400) }), 'case-id');
     expect(encodeURIComponent(text).length).toBeLessThanOrEqual(512);
     expect(text).toContain('case-id');
+    expect(() => auditReason(request({ reason: '😀'.repeat(200) }), 'case-id')).not.toThrow();
   });
 });

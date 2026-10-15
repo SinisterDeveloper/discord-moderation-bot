@@ -15,7 +15,7 @@ export const actions = [
 export type Action = (typeof actions)[number];
 export type CaseState =
   'pending' | 'executing' | 'succeeded' | 'failed' | 'unknown' | 'legacy_unverified';
-export type Source = 'manual' | 'account_age' | 'invite_filter' | 'legacy';
+export type Source = 'manual' | 'account_age' | 'invite_filter' | 'legacy' | 'live_test';
 export type Preset = 'mentions' | 'words' | 'keywords';
 export interface ManagedPreset {
   key: string;

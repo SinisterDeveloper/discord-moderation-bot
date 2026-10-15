@@ -49,7 +49,7 @@ export function legacyCase(doc: LegacyRecord, sourceName: string) {
     actorId: validId(doc.Moderator) ? doc.Moderator : 'legacy:unknown',
     requestKey: `legacy:${sourceName}:modlogs:${sourceId}`,
     source: 'legacy',
-    action: mapped[String(doc.Type)] ?? 'legacy_unknown',
+    action: Object.hasOwn(mapped, String(doc.Type)) ? mapped[String(doc.Type)]! : 'legacy_unknown',
     reason:
       String(doc.Reason ?? '')
         .trim()

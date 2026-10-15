@@ -17,6 +17,7 @@ try {
   const targetName = z
     .string()
     .regex(/^[\w-]+$/)
+    .max(38)
     .parse(process.env.MONGODB_DATABASE);
   if (sourceName === targetName) throw new Error('Source and target databases must differ.');
   const uri = z

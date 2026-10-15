@@ -44,6 +44,7 @@ export function fixture() {
     saveSettings: vi.fn(async (s) => s),
     insertCase: vi.fn(async (r) => ({ record: { ...record, ...r }, created: true })),
     getCase: vi.fn(async () => record),
+    findRequest: vi.fn(async () => null),
     transition: vi.fn(async (_g, _id, _from, state, code) => {
       record.state = state;
       record.errorCode = code ?? null;

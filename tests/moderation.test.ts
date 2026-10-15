@@ -4,6 +4,31 @@ import { ModerationService } from '../src/moderation/service.js';
 import { DeliveryWorker } from '../src/delivery.js';
 import { fixture, request } from './helpers.js';
 describe('durable action execution', () => {
+  it('returns a recorded kick result even after the member has left', async () => {
+    const f = fixture();
+    vi.mocked(f.store.findRequest).mockResolvedValue({
+      ...f.record,
+      action: 'kick',
+      state: 'succeeded',
+    });
+    vi.mocked(f.discord.authorize).mockRejectedValue(new Error('Member left.'));
+    const result = await new ModerationService(f.store, f.discord).execute(
+      request({ action: 'kick' }),
+    );
+    expect(result.duplicate).toBe(true);
+    expect(f.discord.authorize).not.toHaveBeenCalled();
+    expect(f.discord.perform).not.toHaveBeenCalled();
+  });
+  it('rejects a duplicate key for a different target', async () => {
+    const f = fixture();
+    vi.mocked(f.store.findRequest).mockResolvedValue(f.record);
+    await expect(
+      new ModerationService(f.store, f.discord).execute(
+        request({ targetId: '1108716196024561765' }),
+      ),
+    ).rejects.toThrow('another action');
+    expect(f.discord.perform).not.toHaveBeenCalled();
+  });
   it('saves executing before calling Discord and success before DM delivery', async () => {
     const f = fixture();
     vi.mocked(f.discord.perform).mockImplementation(async () => {
@@ -18,6 +43,12 @@ describe('durable action execution', () => {
   it('does not perform an action if the pending record cannot be saved', async () => {
     const f = fixture();
     vi.mocked(f.store.insertCase).mockRejectedValue(new Error('offline'));
+    await expect(new ModerationService(f.store, f.discord).execute(request())).rejects.toThrow();
+    expect(f.discord.perform).not.toHaveBeenCalled();
+  });
+  it('does not perform an action if the executing state cannot be saved', async () => {
+    const f = fixture();
+    vi.mocked(f.store.transition).mockRejectedValue(new Error('offline'));
     await expect(new ModerationService(f.store, f.discord).execute(request())).rejects.toThrow();
     expect(f.discord.perform).not.toHaveBeenCalled();
   });

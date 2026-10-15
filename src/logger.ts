@@ -17,7 +17,11 @@ export function createLogger(level = 'info') {
     },
   });
 }
-export const logger = createLogger(process.env.LOG_LEVEL ?? 'info');
+export const logger = createLogger(
+  ['debug', 'info', 'warn', 'error', 'silent'].includes(process.env.LOG_LEVEL ?? '')
+    ? process.env.LOG_LEVEL
+    : 'info',
+);
 export function errorCode(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'code' in error) return String(error.code);
   return 'INTERNAL_ERROR';

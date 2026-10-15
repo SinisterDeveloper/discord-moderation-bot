@@ -149,6 +149,19 @@ function nativeFixture() {
   return { ...f, rules, port, manager: new AutoModManager(f.store, port) };
 }
 describe('owned AutoMod presets', () => {
+  it('does not create a second rule after the rule ID could not be saved', async () => {
+    const f = nativeFixture();
+    const preview = await f.manager.preview(guildId, 'mentions', true);
+    vi.mocked(f.store.saveSettings).mockRejectedValueOnce(new Error('write failed'));
+    await expect(f.manager.apply(guildId, 'mentions', true, preview.fingerprint)).rejects.toThrow(
+      'write failed',
+    );
+    expect(f.rules).toHaveLength(1);
+    const next = await f.manager.preview(guildId, 'mentions', true);
+    await f.manager.apply(guildId, 'mentions', true, next.fingerprint);
+    expect(f.port.create).toHaveBeenCalledOnce();
+    expect(f.port.edit).toHaveBeenCalledOnce();
+  });
   it('requires configuration and saves drafts without changing Discord', async () => {
     const f = nativeFixture();
     await expect(f.manager.preview(guildId, 'keywords', true)).rejects.toThrow('keyword');

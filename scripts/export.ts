@@ -26,6 +26,7 @@ try {
   const database = z
     .string()
     .regex(/^[\w-]+$/)
+    .max(38)
     .parse(process.env.MONGODB_DATABASE);
   connection = await mongoose
     .createConnection(uri, { dbName: database, serverSelectionTimeoutMS: 10_000 })
@@ -38,7 +39,7 @@ try {
     ['case', 'moderation_cases_v3'],
   ] as const) {
     for await (const record of connection.db!.collection(name).find(filter).sort({ _id: 1 })) {
-      await output.write(`${JSON.stringify({ kind, record })}\n`);
+      await output.write(`${mongoose.mongo.BSON.EJSON.stringify({ kind, record })}\n`);
       count++;
     }
   }

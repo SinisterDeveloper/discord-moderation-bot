@@ -22,6 +22,7 @@ export interface Store {
     settings: GuildSettings,
   ): Promise<{ record: ModerationCase; created: boolean }>;
   getCase(guildId: string, id: string): Promise<ModerationCase | null>;
+  findRequest(guildId: string, requestKey: string): Promise<ModerationCase | null>;
   transition(
     guildId: string,
     id: string,
@@ -204,6 +205,10 @@ export class MongoStore implements Store {
     const raw = await this.cases.findOne({ guildId, _id: id }).lean();
     return raw ? asCase(raw) : null;
   }
+  async findRequest(guildId: string, requestKey: string) {
+    const raw = await this.cases.findOne({ guildId, requestKey }).lean();
+    return raw ? asCase(raw) : null;
+  }
   async transition(
     guildId: string,
     id: string,
@@ -271,8 +276,12 @@ export class MongoStore implements Store {
     }
     if (change.kind === 'resolve') {
       filter.state = 'unknown';
+      filter['staff.status'] = { $ne: 'sending' };
       if (!outcome) throw new UserError('An outcome is required.');
+      const record = await this.getCase(guildId, id);
+      if (!record) throw new UserError('Case not found in this server.');
       set.state = outcome;
+      set.staff = delivery(record.logChannelId !== null);
     }
     const raw = await this.cases
       .findOneAndUpdate(
@@ -281,35 +290,28 @@ export class MongoStore implements Store {
         { returnDocument: 'after' },
       )
       .lean();
-    if (!raw) throw new UserError('This case cannot be changed, or it changed during the request.');
+    if (!raw)
+      throw new UserError(
+        'This case cannot be changed. It may have changed or its staff log is still sending. Read it and try again.',
+      );
     return asCase(raw);
   }
   async unresolved(guildId: string) {
     return this.cases.countDocuments({ guildId, state: 'unknown' });
   }
   async recover() {
-    await this.cases.updateMany(
-      { state: 'pending' },
-      {
-        $set: {
-          state: 'failed',
-          errorCode: 'CANCELLED_BEFORE_EXECUTION',
-          'dm.status': 'disabled',
-          updatedAt: new Date(),
-        },
-      },
-    );
-    await this.cases.updateMany(
-      { state: 'executing' },
-      {
-        $set: {
-          state: 'unknown',
-          errorCode: 'PROCESS_INTERRUPTED',
-          'dm.status': 'disabled',
-          updatedAt: new Date(),
-        },
-      },
-    );
+    for await (const record of this.cases
+      .find({ state: { $in: ['pending', 'executing'] } })
+      .cursor()) {
+      const pending = record.state === 'pending';
+      await this.transition(
+        record.guildId,
+        String(record._id),
+        [pending ? 'pending' : 'executing'],
+        pending ? 'failed' : 'unknown',
+        pending ? 'CANCELLED_BEFORE_EXECUTION' : 'PROCESS_INTERRUPTED',
+      );
+    }
     await this.cases.updateMany(
       { 'dm.status': { $in: ['sending', 'pending'] } },
       { $set: { 'dm.status': 'failed', 'dm.errorCode': 'PROCESS_INTERRUPTED' } },

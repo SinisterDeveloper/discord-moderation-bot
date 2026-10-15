@@ -43,6 +43,7 @@ type Reply = InteractionEditReplyOptions;
 type Callback = (button: ButtonInteraction) => Promise<Reply>;
 export class CommandRouter {
   private sessions = new Sessions<Callback>();
+  private lastUse = new Map<string, number>();
   constructor(
     private readonly client: Client,
     private readonly store: Store,
@@ -95,8 +96,14 @@ export class CommandRouter {
         await interaction.editReply(await callback(interaction));
       } else {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const key = `${interaction.guildId}:${interaction.user.id}:${interaction.commandName}`;
+        if ((this.lastUse.get(key) ?? 0) > Date.now())
+          throw new UserError('Wait one second before repeating this command.');
+        if (this.lastUse.size >= 5000) this.lastUse.delete(this.lastUse.keys().next().value!);
+        this.lastUse.set(key, Date.now() + 1000);
         await interaction.editReply(await this.chat(interaction));
       }
+      return true;
     } catch (error) {
       const ref = errorCode(error);
       logger.warn({ code: ref, guildId: interaction.guildId }, 'Command failed.');
@@ -107,6 +114,7 @@ export class CommandRouter {
       if (interaction.deferred || interaction.replied)
         await interaction.editReply({ content, embeds: [], components: [] }).catch(() => {});
       else await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+      return false;
     }
   }
   private async actionResult(request: ActionRequest): Promise<Reply> {

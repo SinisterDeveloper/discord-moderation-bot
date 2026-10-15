@@ -44,6 +44,16 @@ export class ModerationService {
       throw new UserError('Another action for this member is running. Try again.', 'BUSY');
     this.active.add(lock);
     try {
+      const previous = await this.store.findRequest(request.guildId, request.requestKey);
+      if (previous) {
+        if (
+          previous.actorId !== request.actorId ||
+          previous.targetId !== request.targetId ||
+          previous.action !== request.action
+        )
+          throw new UserError('This request key belongs to another action.', 'CONFLICT');
+        return { record: previous, duplicate: true, noop: false };
+      }
       const settings = await this.store.getSettings(request.guildId);
       if ((await this.discord.authorize(request, settings)) === 'noop')
         return { record: null, duplicate: false, noop: true };
@@ -91,6 +101,12 @@ export class ModerationService {
         } catch (error) {
           dmError = errorCode(error);
         }
+        finished.dm = {
+          ...finished.dm,
+          status: dmError ? 'failed' : 'sent',
+          attempts: 1,
+          errorCode: dmError,
+        };
         try {
           await this.store.finishDM(request.guildId, record.id, dmError);
         } catch {

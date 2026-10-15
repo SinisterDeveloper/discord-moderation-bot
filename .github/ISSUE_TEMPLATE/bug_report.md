@@ -1,40 +1,32 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a bot fault with reproducible steps.
 title: ''
 labels: ''
 assignees: ''
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**Versions**
 
-**To Reproduce**
-Steps to reproduce the behavior:
+- Bot version and commit:
+- Node.js version:
+- MongoDB version or Atlas:
+- Operating system:
 
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**What happened?**
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+State the command or policy, expected result, and actual result.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Steps to reproduce**
 
-**Desktop (please complete the following information):**
+1.
+2.
+3.
 
--   OS: [e.g. iOS]
--   Browser [e.g. chrome, safari]
--   Version [e.g. 22]
+**Permissions and configuration**
 
-**Smartphone (please complete the following information):**
+State the relevant actor/bot permissions, role order, enabled capabilities, and `/doctor` result. Do not include tokens, connection strings, or private moderation exports.
 
--   Device: [e.g. iPhone6]
--   OS: [e.g. iOS8.1]
--   Browser [e.g. stock browser, safari]
--   Version [e.g. 22]
+**Evidence**
 
-**Additional context**
-Add any other context about the problem here.
+Include the case ID and redacted error reference. State whether this was a real Discord interaction or a simulated/API test.

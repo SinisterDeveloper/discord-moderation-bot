@@ -1,4 +1,9 @@
 import mongoose from 'mongoose';
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoStore } from '../src/storage/store.js';
@@ -111,5 +116,112 @@ describe('MongoDB storage', () => {
         'succeeded',
       ),
     ).rejects.toThrow();
+  });
+  it('exports and restores BSON values into a new database without changing the source', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'v3-backup-'));
+    const output = join(directory, 'backup.jsonl');
+    const run = promisify(execFile);
+    const args = ['node_modules/tsx/dist/cli.mjs', 'scripts/export.ts', '--all', '--out', output];
+    const env = {
+      ...process.env,
+      MONGODB_URI: server.getUri(),
+      MONGODB_DATABASE: 'v3_local_tests',
+    };
+    const restored = await mongoose
+      .createConnection(server.getUri(), { dbName: 'v3_restore_tests' })
+      .asPromise();
+    try {
+      const before = await store.cases.countDocuments({});
+      await run(process.execPath, args, { env });
+      const backup = await readFile(output, 'utf8');
+      await expect(run(process.execPath, args, { env })).rejects.toThrow();
+      expect(await readFile(output, 'utf8')).toBe(backup);
+      for (const line of backup.trim().split('\n')) {
+        const { kind, record } = mongoose.mongo.BSON.EJSON.parse(line) as {
+          kind: 'settings' | 'case';
+          record: mongoose.mongo.Document;
+        };
+        await restored
+          .db!.collection(kind === 'settings' ? 'guild_settings_v3' : 'moderation_cases_v3')
+          .insertOne(record);
+      }
+      const restoredStore = new MongoStore(restored);
+      await restoredStore.init();
+      expect(await restoredStore.cases.countDocuments({})).toBe(before);
+      const source = await store.cases.findOne({ requestKey: 'interrupted' }).lean();
+      const copy = await restoredStore.getCase(guildId, String(source!._id));
+      expect(copy?.createdAt).toBeInstanceOf(Date);
+      expect(copy?.createdAt).toEqual(source!.createdAt);
+      expect(copy?.changes).toEqual(source!.changes);
+      expect((await restoredStore.getSettings(guildId)).dmEnabled).toBe(false);
+      expect(await store.cases.countDocuments({})).toBe(before);
+    } finally {
+      await restored.close();
+      await rm(directory, { recursive: true });
+    }
+  }, 30_000);
+  it('saves staff resolution and its new log delivery atomically', async () => {
+    const settings = await store.getSettings(guildId);
+    const { record } = await store.insertCase(request({ requestKey: 'resolution-log' }), {
+      ...settings,
+      logChannelId: '1560181480427225159',
+    });
+    await store.transition(guildId, record.id, ['pending'], 'executing');
+    await store.transition(guildId, record.id, ['executing'], 'unknown', 'NETWORK');
+    const claimed = await store.claimStaff();
+    expect(claimed?.id).toBe(record.id);
+    const change = {
+      actorId,
+      at: new Date(),
+      kind: 'resolve' as const,
+      previous: 'unknown',
+      value: 'Discord audit log confirms the action.',
+    };
+    await expect(store.changeCase(guildId, record.id, change, 'succeeded')).rejects.toThrow(
+      'sending',
+    );
+    await store.finishStaff(claimed!, null, false, '1234567890123456789');
+    const resolved = await store.changeCase(guildId, record.id, change, 'succeeded');
+    expect(resolved.state).toBe('succeeded');
+    expect(resolved.staff.status).toBe('pending');
+    expect(resolved.changes).toEqual([change]);
+    const followup = await store.claimStaff();
+    expect(followup?.id).toBe(record.id);
+    await store.finishStaff(followup!, null, false, '1234567890123456790');
+  });
+  it('bounds temporary staff delivery retries and does not retry interrupted DMs', async () => {
+    const { record } = await store.insertCase(request({ requestKey: 'delivery-retries' }), {
+      ...(await store.getSettings(guildId)),
+      dmEnabled: true,
+      logChannelId: '1560181480427225159',
+    });
+    await store.transition(guildId, record.id, ['pending'], 'executing');
+    await store.transition(guildId, record.id, ['executing'], 'succeeded');
+    expect(await store.claimDM(guildId, record.id)).toBe(true);
+    await store.recover();
+    expect(await store.claimDM(guildId, record.id)).toBe(false);
+    expect((await store.getCase(guildId, record.id))?.dm.status).toBe('failed');
+    for (const attempt of [1, 2, 3]) {
+      const claimed = await store.claimStaff();
+      expect(claimed?.id).toBe(record.id);
+      expect(claimed?.staff.attempts).toBe(attempt);
+      if (attempt === 3) {
+        await store.recover();
+        break;
+      }
+      const before = Date.now();
+      await store.finishStaff(claimed!, 'TEMPORARY', false);
+      const saved = await store.getCase(guildId, record.id);
+      expect(saved?.staff.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(
+        before + (attempt === 1 ? 10_000 : 60_000),
+      );
+      expect(await store.claimStaff()).toBeNull();
+      await store.cases.updateOne(
+        { guildId, _id: record.id },
+        { $set: { 'staff.nextAttemptAt': new Date(0) } },
+      );
+    }
+    expect((await store.getCase(guildId, record.id))?.staff.status).toBe('failed');
+    expect(await store.claimStaff()).toBeNull();
   });
 });
