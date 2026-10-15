@@ -20,7 +20,15 @@ import {
   type GuildSettings,
   type Preset,
 } from '../domain.js';
-import { caseSummary } from '../discord/adapter.js';
+import {
+  actionLabel,
+  caseEmbed,
+  caseStatus,
+  embedReply,
+  person,
+  settingsEmbed,
+  textEmbed,
+} from '../discord/presentation.js';
 import { errorCode, logger } from '../logger.js';
 import type { ModerationService } from '../moderation/service.js';
 import type { Store } from '../storage/store.js';
@@ -79,7 +87,7 @@ export class CommandRouter {
     if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
     if (!interaction.inGuild()) {
       await interaction.reply({
-        content: 'Use this command in a server.',
+        ...embedReply(textEmbed('Server command', 'Use this command in a server.', 'warning')),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -92,7 +100,7 @@ export class CommandRouter {
           interaction.user.id,
           interaction.guildId,
         );
-        await interaction.update({ content: 'Checking this request…', embeds: [], components: [] });
+        await interaction.update(embedReply(textEmbed('Checking request', 'Please wait.')));
         await interaction.editReply(await callback(interaction));
       } else {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -111,25 +119,32 @@ export class CommandRouter {
         error instanceof UserError
           ? error.message
           : `The request could not be completed. Reference: ${ref}. Check /doctor or the service logs.`;
+      const response = embedReply(
+        textEmbed(
+          'Request not completed',
+          content,
+          error instanceof UserError ? 'warning' : 'error',
+        ),
+      );
       if (interaction.deferred || interaction.replied)
-        await interaction.editReply({ content, embeds: [], components: [] }).catch(() => {});
-      else await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+        await interaction.editReply(response).catch(() => {});
+      else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral }).catch(() => {});
       return false;
     }
   }
   private async actionResult(request: ActionRequest): Promise<Reply> {
     const result = await this.service.execute(request);
     if (result.noop)
-      return {
-        content:
-          'No change needed. The requested restriction is already absent or the user is already banned.',
-        components: [],
-      };
+      return embedReply(
+        textEmbed(
+          'No change needed',
+          'The requested restriction is already absent or the user is already banned.',
+        ),
+      );
     const record = result.record!;
-    return {
-      content: `${result.duplicate ? 'Existing request result:\n' : ''}${caseSummary(record)}${record.state === 'unknown' ? '\nStaff must verify this result before taking another action.' : ''}`,
-      components: [],
-    };
+    const embed = caseEmbed(record);
+    if (result.duplicate) embed.setAuthor({ name: 'Existing request result' });
+    return embedReply(embed);
   }
   private async history(
     interaction: ChatInputCommandInteraction | ButtonInteraction,
@@ -138,20 +153,22 @@ export class CommandRouter {
   ): Promise<Reply> {
     await this.requirePermission(interaction, P.ModerateMembers);
     const page = await this.store.listCases(interaction.guildId!, target, cursor);
-    if (!page.records.length) return { content: 'No cases found.', embeds: [], components: [] };
+    if (!page.records.length)
+      return embedReply(textEmbed('Case history', `No cases found for ${person(target)}.`));
     const embed = new EmbedBuilder()
-      .setTitle(`Cases for ${target}`)
+      .setTitle('Case history')
+      .setDescription(person(target))
       .setColor(0x5865f2)
       .addFields(
         page.records.map((record) => ({
-          name: `${record.action} · ${record.state}${record.revoked ? ' · revoked' : ''}`,
-          value: `ID: \`${record.id}\`\n${escapeMarkdown(record.reason.slice(0, 160))}\n<t:${Math.floor(record.createdAt.getTime() / 1000)}:f>`,
+          name: `${actionLabel[record.action]} · ${caseStatus(record)}`,
+          value: `\`${record.id}\` · <t:${Math.floor(record.createdAt.getTime() / 1000)}:d>\n${escapeMarkdown(record.reason.slice(0, 100))}${record.reason.length > 100 ? '…' : ''}`,
         })),
-      );
+      )
+      .setFooter({ text: 'Newest first · Use /case view for details' });
     const cursorNext = page.next;
     return {
-      content: '',
-      embeds: [embed],
+      ...embedReply(embed),
       components: cursorNext
         ? [
             this.button(interaction, 'Next page', (button) =>
@@ -167,9 +184,11 @@ export class CommandRouter {
     const bot = await guild.members.fetchMe({ force: true });
     if (
       !channel?.isSendable() ||
-      !channel.permissionsFor(bot)?.has([P.ViewChannel, P.SendMessages])
+      !channel.permissionsFor(bot)?.has([P.ViewChannel, P.SendMessages, P.EmbedLinks])
     )
-      throw new UserError('Choose a text channel where the bot can view and send messages.');
+      throw new UserError(
+        'Choose a text channel where the bot can view messages, send messages, and embed links.',
+      );
     settings.logChannelId = channelId;
   }
   private async config(interaction: ChatInputCommandInteraction): Promise<Reply> {
@@ -179,9 +198,7 @@ export class CommandRouter {
     const sub = interaction.commandName === 'setup' ? 'setup' : o.getSubcommand();
     switch (sub) {
       case 'view':
-        return {
-          content: `Staff channel: ${settings.logChannelId ?? 'not set'}\nAction DMs: ${settings.dmEnabled}\nAccount age: ${settings.accountAge.enabled ? `${settings.accountAge.days} days, ${settings.accountAge.action}` : 'disabled'}\nInvite filter: ${settings.invites.enabled}\nExempt roles: ${settings.exemptRoles.join(', ') || 'none'}\nExempt channels: ${settings.exemptChannels.join(', ') || 'none'}\nLegacy mute role: ${settings.legacyMuteRoleId ?? 'none'}`,
-        };
+        return embedReply(settingsEmbed(settings));
       case 'setup':
         await this.setLogChannel(settings, o.getChannel('log-channel', true).id);
         break;
@@ -235,57 +252,128 @@ export class CommandRouter {
     if ((settings.accountAge.enabled || settings.invites.enabled) && !settings.logChannelId)
       throw new UserError('Run /setup to choose a staff log channel first.');
     await this.store.saveSettings(settings);
-    return {
-      content: 'Settings saved. Native AutoMod exemptions take effect when you apply each preset.',
-    };
+    return embedReply(
+      textEmbed(
+        'Settings saved',
+        sub === 'setup' || sub === 'log-channel'
+          ? `Staff logs will go to <#${settings.logChannelId}>.`
+          : sub === 'exempt-role' || sub === 'exempt-channel'
+            ? 'Exemptions updated. Apply each native AutoMod preset to update its exemptions.'
+            : 'Your server settings have been updated.',
+        'success',
+      ),
+    );
   }
   private async chat(interaction: ChatInputCommandInteraction): Promise<Reply> {
     const name = interaction.commandName;
     const o = interaction.options;
     const guildId = interaction.guildId!;
     if (name === 'ping')
-      return {
-        content: `Pong. Gateway: ${this.client.ws.ping} ms. Database: ${this.store.available() ? 'ready' : 'unavailable'}.`,
-      };
+      return embedReply(
+        textEmbed(
+          'Pong',
+          `**Gateway** ${this.client.ws.ping < 0 ? 'Measuring…' : `${this.client.ws.ping} ms`} · **Database** ${this.store.available() ? 'Ready' : 'Unavailable'}`,
+          this.store.available() ? 'success' : 'warning',
+        ),
+      );
     if (name === 'help')
-      return {
-        content:
-          'Moderation: /ban, /kick, /unban, /warn, /timeout, /untimeout.\nHistory: /cases, /case view.\nManagement: /setup, /config, /automod, /doctor, /case reason, /case revoke, /case resolve.\nImported restrictions: /legacy-unmute.\nUse /doctor to check missing access. New timeouts last at most 28 days.',
-      };
+      return embedReply(
+        textEmbed('Command guide', 'Choose a command to see its options.')
+          .addFields(
+            {
+              name: 'Moderation',
+              value: '`/ban` `/unban` `/kick` `/warn` `/timeout` `/untimeout` `/legacy-unmute`',
+            },
+            {
+              name: 'Cases',
+              value: '`/cases` `/case view` `/case reason` `/case revoke` `/case resolve`',
+            },
+            { name: 'Server setup', value: '`/setup` `/config` `/automod` `/doctor`' },
+          )
+          .setFooter({ text: 'Replies are private · Timeouts last at most 28 days' }),
+      );
     if (name === 'doctor') {
       await this.requirePermission(interaction, P.ManageGuild);
       if (!this.store.available())
-        return { content: 'Database unavailable. New bot-run actions are paused.' };
+        return embedReply(
+          textEmbed(
+            'System check',
+            'Database unavailable. New bot-run actions are paused.',
+            'error',
+          ),
+        );
       const settings = await this.store.getSettings(guildId);
       const guild = await this.client.guilds.fetch(guildId);
       const bot = await guild.members.fetchMe({ force: true });
-      const lines = [
-        `Database: ready. Uncertain cases: ${await this.store.unresolved(guildId)}.`,
-        `Capabilities: member events ${this.capabilities.memberEvents}; message filter ${this.capabilities.messageFilter}.`,
-        `Staff channel: ${settings.logChannelId ?? 'not set'}.`,
-        `Bot permissions: ban ${bot.permissions.has(P.BanMembers)}, kick ${bot.permissions.has(P.KickMembers)}, timeout ${bot.permissions.has(P.ModerateMembers)}, invite deletion ${bot.permissions.has(P.ManageMessages)}, legacy roles ${bot.permissions.has(P.ManageRoles)}, AutoMod ${bot.permissions.has(P.ManageGuild)}.`,
-      ];
+      const missing = [
+        ['Ban Members', P.BanMembers],
+        ['Kick Members', P.KickMembers],
+        ['Moderate Members', P.ModerateMembers],
+        ['Manage Messages', P.ManageMessages],
+        ['Manage Roles', P.ManageRoles],
+        ['Manage Server', P.ManageGuild],
+      ] as const;
+      const missingPermissions = missing
+        .filter(([, permission]) => !bot.permissions.has(permission))
+        .map(([label]) => label);
+      const faults: string[] = [];
       const unknown = await this.store.listUnresolved(guildId);
-      if (unknown.length)
-        lines.push(
-          'Uncertain cases (oldest 10):',
-          ...unknown.map((record) => `${record.id}: ${record.action}, user ${record.targetId}`),
-          'Use /case view, then /case resolve with evidence. Actions are never repeated here.',
-        );
       if (settings.accountAge.enabled && !this.capabilities.memberEvents)
-        lines.push('FAULT: account-age checks need member events.');
+        faults.push('Account-age checks need member events.');
       if (settings.invites.enabled && !this.capabilities.messageFilter)
-        lines.push('FAULT: invite filtering needs message content access.');
+        faults.push('Invite filtering needs message content access.');
+      let staffChannel = 'Not set. Use /setup.';
       if (settings.logChannelId) {
         try {
           await this.setLogChannel(settings, settings.logChannelId);
+          staffChannel = `<#${settings.logChannelId}>`;
         } catch {
-          lines.push('FAULT: staff channel is missing or inaccessible.');
+          staffChannel = 'Missing or inaccessible. Use /setup.';
+          faults.push('The bot cannot send staff logs.');
         }
       }
-      if (this.native && bot.permissions.has(P.ManageGuild))
-        lines.push(await this.native.status(guildId));
-      return { content: lines.join('\n').slice(0, 1950) };
+      const nativeStatus =
+        this.native && bot.permissions.has(P.ManageGuild)
+          ? await this.native.status(guildId)
+          : null;
+      const needsAttention =
+        faults.length > 0 ||
+        missingPermissions.length > 0 ||
+        unknown.length > 0 ||
+        !settings.logChannelId ||
+        (nativeStatus && /FAULT:|external changes/i.test(nativeStatus));
+      const embed = textEmbed(
+        'System check',
+        `**Discord** Connected · **Database** Ready${needsAttention ? '\nSome checks need attention.' : ''}`,
+        needsAttention ? 'warning' : 'success',
+      ).addFields(
+        { name: 'Staff logs', value: staffChannel, inline: true },
+        {
+          name: 'Policy access',
+          value: `Member events: ${this.capabilities.memberEvents ? 'On' : 'Off'}\nMessage filtering: ${this.capabilities.messageFilter ? 'On' : 'Off'}`,
+          inline: true,
+        },
+      );
+      if (missingPermissions.length)
+        embed.addFields({ name: 'Missing permissions', value: missingPermissions.join(', ') });
+      if (nativeStatus) embed.addFields({ name: 'Native AutoMod', value: nativeStatus });
+      if (faults.length) embed.addFields({ name: 'Faults', value: faults.join('\n') });
+      if (unknown.length) {
+        const count = await this.store.unresolved(guildId);
+        embed.addFields({
+          name: `Uncertain cases (${count})`,
+          value: unknown
+            .map(
+              (record) =>
+                `\`${record.id}\` · ${actionLabel[record.action]} · ${person(record.targetId)}`,
+            )
+            .join('\n'),
+        });
+        embed.setFooter({
+          text: 'Oldest 10 shown · Use /case view, then /case resolve with evidence',
+        });
+      }
+      return embedReply(embed);
     }
     if (name === 'setup' || name === 'config') return this.config(interaction);
     if (name === 'cases') return this.history(interaction, o.getUser('user', true).id);
@@ -294,13 +382,7 @@ export class CommandRouter {
       await this.requirePermission(interaction, sub === 'view' ? P.ModerateMembers : P.ManageGuild);
       const record = await this.store.getCase(guildId, o.getString('id', true));
       if (!record) throw new UserError('Case not found in this server.');
-      if (sub === 'view')
-        return {
-          content: `${caseSummary(record)}\nChanges: ${record.changes.length}.\n${record.changes
-            .slice(-3)
-            .map((c) => `${c.kind} by ${c.actorId}: ${escapeMarkdown(c.value).slice(0, 160)}`)
-            .join('\n')}`.slice(0, 1950),
-        };
+      if (sub === 'view') return embedReply(caseEmbed(record, true));
       const kind = sub === 'reason' ? 'reason' : sub === 'revoke' ? 'revoke' : 'resolve';
       const value = parseReason(o.getString(kind === 'resolve' ? 'evidence' : 'reason', true));
       const outcome =
@@ -317,37 +399,54 @@ export class CommandRouter {
         },
         outcome,
       );
-      return { content: caseSummary(changed) };
+      return embedReply(
+        caseEmbed(changed).setAuthor({
+          name:
+            kind === 'reason'
+              ? 'Reason updated'
+              : kind === 'revoke'
+                ? 'Warning revoked'
+                : 'Outcome resolved',
+        }),
+      );
     }
     if (name === 'automod') {
       await this.requirePermission(interaction, P.ManageGuild);
       if (!this.native) throw new UserError('Native AutoMod is not available in this build.');
       const native = this.native;
       const sub = o.getSubcommand();
-      if (sub === 'status') return { content: await native.status(guildId) };
+      if (sub === 'status')
+        return embedReply(textEmbed('Native AutoMod', await native.status(guildId)));
       const preset = o.getString('preset', true) as Preset;
       if (sub === 'configure')
-        return {
-          content: await native.configure(guildId, preset, {
-            limit: o.getInteger('limit'),
-            categories: o.getString('categories'),
-            keywords: o.getString('keywords'),
-          }),
-        };
+        return embedReply(
+          textEmbed(
+            'Preset saved',
+            await native.configure(guildId, preset, {
+              limit: o.getInteger('limit'),
+              categories: o.getString('categories'),
+              keywords: o.getString('keywords'),
+            }),
+            'success',
+          ),
+        );
       const enabled = sub === 'apply';
       const preview = await native.preview(guildId, preset, enabled);
       return {
-        content: preview.text,
+        ...embedReply(textEmbed('Review AutoMod change', preview.text, 'warning')),
         components: [
           this.button(
             interaction,
             enabled ? 'Apply rule' : 'Disable rule',
             async (button) => {
               await this.requirePermission(button, P.ManageGuild);
-              return {
-                content: await native.apply(guildId, preset, enabled, preview.fingerprint),
-                components: [],
-              };
+              return embedReply(
+                textEmbed(
+                  enabled ? 'AutoMod enabled' : 'AutoMod disabled',
+                  await native.apply(guildId, preset, enabled, preview.fingerprint),
+                  'success',
+                ),
+              );
             },
             !enabled,
           ),
@@ -376,7 +475,11 @@ export class CommandRouter {
     if (action === 'ban' || action === 'kick') {
       await this.service.validate(request);
       return {
-        content: `Confirm ${action} for ${target}. Reason: ${escapeMarkdown(request.reason)}\nThis request expires in 60 seconds.`,
+        ...embedReply(
+          textEmbed(`Confirm ${action}`, escapeMarkdown(request.reason), 'warning')
+            .addFields({ name: 'Member', value: person(target) })
+            .setFooter({ text: 'Expires in 60 seconds' }),
+        ),
         components: [
           this.button(interaction, `Confirm ${action}`, () => this.actionResult(request), true),
         ],

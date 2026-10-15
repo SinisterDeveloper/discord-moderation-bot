@@ -23,7 +23,7 @@ A self-hosted Discord moderation bot. Use slash commands, native timeouts, durab
 
    | Feature                    | Bot permissions                                     |
    | -------------------------- | --------------------------------------------------- |
-   | Staff logs                 | View Channel, Send Messages                         |
+   | Staff logs                 | View Channel, Send Messages, Embed Links            |
    | Kick / ban                 | Kick Members / Ban Members                          |
    | Timeouts                   | Moderate Members                                    |
    | Invite filtering           | View Channel, Read Message History, Manage Messages |
@@ -66,7 +66,7 @@ For development, use `npm run dev`. For a server deployment, run the built appli
 
 Reasons are required. Ban and kick need confirmation within 60 seconds. Timeouts accept values such as `30m`, `12h`, or `7d`, up to 28 days. New indefinite role mutes are not supported.
 
-Command replies are private. Case IDs are stable. History shows 10 cases per page. Case changes retain the previous value and the actor. A warning can be revoked; other Discord actions must be reversed with their matching commands. Each case supports up to 100 amendments.
+Command replies are private and use compact embeds. DMs and bot staff logs use the same format. Case IDs are stable. History shows 10 cases per page. Use `/case view` for delivery details and recent changes. Case changes retain the previous value and the actor. A warning can be revoked; other Discord actions must be reversed with their matching commands. Each case supports up to 100 amendments.
 
 The mixed `/case` command group uses checks for each subcommand. Other restricted command groups also set Discord permission defaults. Server integration settings can change command visibility, but cannot bypass runtime checks.
 

@@ -53,8 +53,13 @@ describe('interaction handling', () => {
     const i = interaction('ping');
     expect(await router.handle(i as unknown as ChatInputCommandInteraction)).toBe(true);
     expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
-    expect(i.editReply).toHaveBeenCalledWith({
-      content: 'Pong. Gateway: 12 ms. Database: ready.',
+    const response = i.editReply.mock.calls[0]![0];
+    expect(response.content).toBe('');
+    expect(response.allowedMentions).toEqual({ parse: [] });
+    expect(response.embeds).toHaveLength(1);
+    expect(response.embeds[0].toJSON()).toMatchObject({
+      title: 'Pong',
+      description: '**Gateway** 12 ms · **Database** Ready',
     });
   });
   it('checks permissions again when a moderator confirms a ban', async () => {
@@ -108,9 +113,12 @@ describe('interaction handling', () => {
       },
     };
     expect(await router.handle(i as unknown as ChatInputCommandInteraction)).toBe(false);
-    expect(i.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({ content: expect.stringContaining('Enable member events') }),
-    );
+    const response = i.editReply.mock.calls[0]![0];
+    expect(response.content).toBe('');
+    expect(response.embeds[0].toJSON()).toMatchObject({
+      title: 'Request not completed',
+      description: expect.stringContaining('Enable member events'),
+    });
     expect(f.store.saveSettings).not.toHaveBeenCalled();
   });
 });

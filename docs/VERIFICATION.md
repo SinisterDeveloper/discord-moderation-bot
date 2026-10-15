@@ -6,16 +6,16 @@ The implementation and automated checks are complete. Human-assisted Discord che
 
 ## Automated checks
 
-| Check                                             | Result                                                         |
-| ------------------------------------------------- | -------------------------------------------------------------- |
-| Clean `npm ci` from the committed lockfile        | Passed with Node.js 24.22.0                                    |
-| Production build from the clean installation      | Passed                                                         |
-| `npm run check`                                   | Passed: types, lint, formatting, credentials, tests, build     |
-| Unit, service, command, policy, and runtime tests | 58 passed                                                      |
-| `npm run test:storage`                            | 9 passed against a temporary MongoDB 8.0.17 process            |
-| Dependency audit during clean installation        | No vulnerabilities reported                                    |
-| Normal application startup with Atlas and Discord | Passed                                                         |
-| Normal application health endpoints               | Liveness and readiness returned 200; unknown path returned 404 |
+| Check                                                           | Result                                                         |
+| --------------------------------------------------------------- | -------------------------------------------------------------- |
+| Clean `npm ci` from the committed lockfile                      | Passed with Node.js 24.22.0                                    |
+| Production build from the clean installation                    | Passed                                                         |
+| `npm run check`                                                 | Passed: types, lint, formatting, credentials, tests, build     |
+| Unit, service, command, policy, presentation, and runtime tests | 62 passed                                                      |
+| `npm run test:storage`                                          | 9 passed against a temporary MongoDB 8.0.17 process            |
+| Dependency audit during clean installation                      | No vulnerabilities reported                                    |
+| Normal application startup with Atlas and Discord               | Passed                                                         |
+| Normal application health endpoints                             | Liveness and readiness returned 200; unknown path returned 404 |
 
 Storage checks include separate-server histories, concurrent duplicate requests, stable pagination, settings conflicts, interrupted actions, atomic staff resolution, delivery retry limits, repeat imports, and restoration into a new database. The export test runs the actual CLI. It checks dates, IDs, case changes, settings, source record counts, and refusal to overwrite an existing file.
 
@@ -45,11 +45,15 @@ These checks use the bot API and shared services. They do not prove real slash c
 
 The first command test window expired before the user tried `/ping`. No successful real interaction was recorded in that window. The runner now supports `--seconds 0`, so it can stay connected until the tester stops it.
 
+Run `2026-10-15T08-01-47-949Z-e9de61` recorded successful real `/ping`, `/doctor`, and `/cases` interactions. The user confirmed that replies work and requested clearer formatting. Command replies, confirmations, errors, moderation DMs, and bot staff logs now use one compact embed. Detailed delivery and change history appear in `/case view`; delivery failures also appear in action results. Embed size checks cover maximum reasons, recent changes, and all allowed exemptions. This checks the payload limits in [Discord's message reference](https://docs.discord.com/developers/resources/message#embed-object).
+
+Discord accepted an embed preview of an existing test case. A read-back check confirmed one embed, two fields, the case reference, no plain-text body, and no mentions. No moderation action was repeated or database record changed for this check. The private evidence is `.local/embed-format-proof.json`.
+
 The restricted interactive runner is open for human checks. It uses the separate test database, saves a settings snapshot, starts policies disabled, and tracks its own resources. Its settings are temporary until that run ends. Stop it with Ctrl+C after testing so cleanup can finish.
 
 Still required:
 
-- Real `/ping`, `/doctor`, setup, warning, history, case view, amendment, revocation, timeout, and timeout removal. Verify private replies and denied permissions in Discord.
+- Visual review of the new embeds in Discord. Real setup, warning, case view, amendment, revocation, timeout, and timeout removal. Verify private replies and denied permissions in Discord.
 - Same-server and external invite messages, including edits and failed lookups.
 - A real native keyword block and Discord staff alert.
 - Account-age alert and kick on join, with human rejoin checkpoints.

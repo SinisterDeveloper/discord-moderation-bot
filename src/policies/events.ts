@@ -10,6 +10,7 @@ import type { ModerationService } from '../moderation/service.js';
 import type { Store } from '../storage/store.js';
 import { errorCode, logger } from '../logger.js';
 import { InviteResolver, PolicyService, inviteCodes } from './service.js';
+import { textEmbed } from '../discord/presentation.js';
 export function attachPolicies(
   client: Client,
   store: Store,
@@ -32,7 +33,10 @@ export function attachPolicies(
         await client.guilds.fetch(guildId)
       ).channels.fetch(settings.logChannelId);
       if (channel?.isSendable())
-        await channel.send({ content: text, allowedMentions: { parse: [] } });
+        await channel.send({
+          embeds: [textEmbed('Policy check needs attention', text, 'warning')],
+          allowedMentions: { parse: [] },
+        });
     },
   );
   const report = (error: unknown) =>

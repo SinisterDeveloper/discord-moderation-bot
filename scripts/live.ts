@@ -27,6 +27,7 @@ import { assertLiveScope, assertLiveTarget, liveScope, liveSettings } from '../s
 import { AutoModManager } from '../src/policies/automod.js';
 import { attachPolicies } from '../src/policies/events.js';
 import { MongoStore } from '../src/storage/store.js';
+import { embedReply, textEmbed } from '../src/discord/presentation.js';
 const { values } = parseArgs({
   options: {
     mode: { type: 'string', default: 'preflight' },
@@ -338,7 +339,13 @@ try {
               interaction.options.getChannel('channel')?.id;
             if (selectedChannel && selectedChannel !== s.channelId) {
               await interaction.reply({
-                content: 'Use the authorized test channel in this run.',
+                ...embedReply(
+                  textEmbed(
+                    'Test scope',
+                    'Use the authorized test channel in this run.',
+                    'warning',
+                  ),
+                ),
                 flags: MessageFlags.Ephemeral,
               });
               return;
@@ -349,7 +356,13 @@ try {
               interaction.options.getString('user-id');
             if (target && target !== s.targetId) {
               await interaction.reply({
-                content: 'This live run accepts only the authorized disposable target.',
+                ...embedReply(
+                  textEmbed(
+                    'Test scope',
+                    'This live run accepts only the authorized disposable target.',
+                    'warning',
+                  ),
+                ),
                 flags: MessageFlags.Ephemeral,
               });
               return;

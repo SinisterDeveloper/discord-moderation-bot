@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Client, PermissionFlagsBits as P, Routes } from 'discord.js';
+import { Client, PermissionFlagsBits as P, Routes, escapeMarkdown } from 'discord.js';
 import type { NativeCommands } from '../commands/router.js';
 import { UserError, type GuildSettings, type Preset } from '../domain.js';
 import type { Store } from '../storage/store.js';
@@ -25,6 +25,11 @@ export interface NativePort {
   checkLog(guildId: string, channelId: string): Promise<void>;
 }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const presetName = {
+  mentions: 'Mention spam',
+  words: 'Discord word filters',
+  keywords: 'Keywords',
+};
 export function normalizeRule(rule: RuleSpec) {
   const m = rule.trigger_metadata;
   return {
@@ -107,10 +112,10 @@ export class AutoModManager implements NativeCommands {
       .map((preset) => {
         const rule = this.owned(settings, preset, rules);
         if (!rule)
-          return `${preset}: ${settings.automod[preset].ruleId ? 'FAULT: owned rule missing' : 'not applied'}.`;
+          return `${presetName[preset]}: ${settings.automod[preset].ruleId ? 'FAULT: owned rule missing' : 'Not applied'}`;
         const actual = hash(normalizeRule(rule));
         const drift = settings.automod[preset].lastApplied !== actual;
-        return `${preset}: ${rule.enabled ? 'enabled' : 'disabled'}${drift ? '; external changes or recovered rule — review before applying' : ''}.`;
+        return `${presetName[preset]}: ${rule.enabled ? 'On' : 'Off'}${drift ? '; external changes or recovered rule — review before applying' : ''}`;
       })
       .join('\n');
   }
@@ -185,9 +190,38 @@ export class AutoModManager implements NativeCommands {
     const changed =
       snapshot.owned &&
       snapshot.settings.automod[preset].lastApplied !== hash(normalizeRule(snapshot.owned));
+    const config = snapshot.settings.automod[preset];
+    const categories: Record<number, string> = { 1: 'Profanity', 2: 'Sexual content', 3: 'Slurs' };
+    const configuration =
+      preset === 'mentions'
+        ? `**Mention limit** ${config.mentionLimit}`
+        : preset === 'words'
+          ? `**Categories** ${config.wordCategories.map((category) => categories[category]).join(', ')}`
+          : `**Keywords** ${config.keywords.length} entries\n${config.keywords
+              .slice(0, 5)
+              .map((keyword) => escapeMarkdown(keyword))
+              .join(', ')}${config.keywords.length > 5 ? '\nShowing the first 5 entries.' : ''}`;
     return {
       fingerprint: snapshot.fingerprint,
-      text: `${enabled ? 'Apply' : 'Disable'} ${preset}.\nOwned rule: ${snapshot.owned?.id ?? 'none'}.\n${enabled ? `Actions: block and alert channel ${snapshot.settings.logChannelId}.\nConfiguration: ${JSON.stringify(snapshot.spec.trigger_metadata).slice(0, 1000)}\nExempt roles: ${snapshot.spec.exempt_roles.length}; channels: ${snapshot.spec.exempt_channels.length}.` : 'Other rules will not be changed.'}${changed ? '\nExternal changes detected. Confirming will replace the managed configuration.' : ''}\nConfirm within 60 seconds.`,
+      text: [
+        `**Preset** ${presetName[preset]} · ${enabled ? 'Enable' : 'Disable'}`,
+        ...(enabled
+          ? [
+              `**Action** Block message and alert <#${snapshot.settings.logChannelId}>`,
+              configuration,
+              `**Exemptions** ${snapshot.spec.exempt_roles.length} roles · ${snapshot.spec.exempt_channels.length} channels`,
+            ]
+          : []),
+        `**Managed rule** ${snapshot.owned ? `\`${snapshot.owned.id}\`` : enabled ? 'Create a new rule' : 'No rule is applied'}`,
+        ...(changed
+          ? [
+              enabled
+                ? '\nExternal changes detected. Confirming will replace the managed configuration.'
+                : '\nExternal changes detected. Confirming will disable the rule.',
+            ]
+          : []),
+        '\nConfirm within 60 seconds.',
+      ].join('\n'),
     };
   }
   async apply(guildId: string, preset: Preset, enabled: boolean, fingerprint: string) {
@@ -210,7 +244,7 @@ export class AutoModManager implements NativeCommands {
       config.ruleId = rule?.id ?? null;
       config.lastApplied = rule ? hash(normalizeRule(rule)) : null;
       await this.store.saveSettings(snapshot.settings);
-      return `${preset} ${enabled ? 'enabled' : 'disabled'}. Other rules were not changed.`;
+      return `${presetName[preset]} ${enabled ? 'enabled' : 'disabled'}. Other rules were not changed.`;
     } finally {
       this.active.delete(guildId);
     }

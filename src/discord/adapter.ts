@@ -1,4 +1,4 @@
-import { Client, DiscordAPIError, PermissionFlagsBits, escapeMarkdown } from 'discord.js';
+import { Client, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
 import {
   ActionFailure,
   UserError,
@@ -8,6 +8,7 @@ import {
 } from '../domain.js';
 import { checkPermissions } from '../moderation/permissions.js';
 import type { DiscordPort } from '../moderation/service.js';
+import { caseEmbed } from './presentation.js';
 export function failure(error: unknown): ActionFailure {
   if (error instanceof ActionFailure) return error;
   return new ActionFailure(
@@ -23,9 +24,6 @@ export function auditReason(request: ActionRequest, caseId: string) {
   const characters = Array.from(Buffer.from(request.reason).toString('utf8'));
   while (encodeURIComponent(prefix + characters.join('')).length > 512) characters.pop();
   return prefix + characters.join('');
-}
-export function caseSummary(record: ModerationCase) {
-  return `Case ${record.id}\nAction: ${record.action}; outcome: ${record.state}${record.revoked ? ' (warning revoked)' : ''}\nUser: ${record.targetId}\nActor: ${record.actorId}\nReason: ${escapeMarkdown(record.reason)}\nCreated: <t:${Math.floor(record.createdAt.getTime() / 1000)}:f>\nDeliveries: DM ${record.dm.status}, staff ${record.staff.status}.${record.errorCode ? `\nReference: ${record.errorCode}` : ''}`;
 }
 export class DiscordAdapter implements DiscordPort {
   constructor(readonly client: Client) {}
@@ -161,7 +159,11 @@ export class DiscordAdapter implements DiscordPort {
     try {
       const user = await this.client.users.fetch(record.targetId);
       await user.send({
-        content: `Moderation notice for server ${record.guildId}\n${caseSummary(record)}`,
+        embeds: [
+          caseEmbed(record).setAuthor({
+            name: this.client.guilds.cache.get(record.guildId)?.name ?? `Server ${record.guildId}`,
+          }),
+        ],
         allowedMentions: { parse: [] },
       });
     } catch (error) {
@@ -174,7 +176,7 @@ export class DiscordAdapter implements DiscordPort {
       const guild = await this.client.guilds.fetch(record.guildId);
       const channel = await guild.channels.fetch(record.logChannelId);
       if (!channel?.isSendable()) throw new ActionFailure('CHANNEL_UNAVAILABLE', true);
-      return (await channel.send({ content: caseSummary(record), allowedMentions: { parse: [] } }))
+      return (await channel.send({ embeds: [caseEmbed(record)], allowedMentions: { parse: [] } }))
         .id;
     } catch (error) {
       throw failure(error);
