@@ -108,7 +108,7 @@ npm run test:storage
 
 Storage tests start a temporary local MongoDB 8.0 process with `mongodb-memory-server`. The first run downloads the database binary. They do not use Atlas or require a container engine.
 
-See [live verification](docs/LIVE_TESTS.md) for guarded Discord checks and human-assisted checks. Local live reports and exports belong in the ignored `.local` directory.
+See [live verification](docs/LIVE_TESTS.md) for guarded Discord checks and human-assisted checks. See [the verification record](docs/VERIFICATION.md) for results and pending release checks. Local live reports and exports belong in the ignored `.local` directory.
 
 ## Contributing
 
