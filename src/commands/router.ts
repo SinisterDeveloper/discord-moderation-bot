@@ -263,8 +263,15 @@ export class CommandRouter {
         `Database: ready. Uncertain cases: ${await this.store.unresolved(guildId)}.`,
         `Capabilities: member events ${this.capabilities.memberEvents}; message filter ${this.capabilities.messageFilter}.`,
         `Staff channel: ${settings.logChannelId ?? 'not set'}.`,
-        `Bot permissions: ban ${bot.permissions.has(P.BanMembers)}, kick ${bot.permissions.has(P.KickMembers)}, timeout ${bot.permissions.has(P.ModerateMembers)}, AutoMod ${bot.permissions.has(P.ManageGuild)}.`,
+        `Bot permissions: ban ${bot.permissions.has(P.BanMembers)}, kick ${bot.permissions.has(P.KickMembers)}, timeout ${bot.permissions.has(P.ModerateMembers)}, invite deletion ${bot.permissions.has(P.ManageMessages)}, legacy roles ${bot.permissions.has(P.ManageRoles)}, AutoMod ${bot.permissions.has(P.ManageGuild)}.`,
       ];
+      const unknown = await this.store.listUnresolved(guildId);
+      if (unknown.length)
+        lines.push(
+          'Uncertain cases (oldest 10):',
+          ...unknown.map((record) => `${record.id}: ${record.action}, user ${record.targetId}`),
+          'Use /case view, then /case resolve with evidence. Actions are never repeated here.',
+        );
       if (settings.accountAge.enabled && !this.capabilities.memberEvents)
         lines.push('FAULT: account-age checks need member events.');
       if (settings.invites.enabled && !this.capabilities.messageFilter)

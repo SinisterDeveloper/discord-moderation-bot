@@ -90,6 +90,10 @@ describe('MongoDB storage', () => {
     await store.recover();
     expect((await store.getCase(guildId, record.id))?.state).toBe('unknown');
     expect(await store.unresolved(guildId)).toBe(1);
+    expect(await store.listUnresolved(guildId)).toEqual([
+      { id: record.id, action: record.action, targetId },
+    ]);
+    expect(await store.listUnresolved('1108716196024561765')).toEqual([]);
   });
   it('amends atomically and resolves only uncertain cases', async () => {
     const cases = await store.cases.find({ requestKey: 'interrupted' }).lean();

@@ -38,6 +38,7 @@ export interface Store {
     outcome?: 'succeeded' | 'failed',
   ): Promise<ModerationCase>;
   unresolved(guildId: string): Promise<number>;
+  listUnresolved(guildId: string): Promise<Pick<ModerationCase, 'id' | 'action' | 'targetId'>[]>;
   claimStaff(): Promise<ModerationCase | null>;
   finishStaff(
     record: ModerationCase,
@@ -298,6 +299,19 @@ export class MongoStore implements Store {
   }
   async unresolved(guildId: string) {
     return this.cases.countDocuments({ guildId, state: 'unknown' });
+  }
+  async listUnresolved(guildId: string) {
+    const records = await this.cases
+      .find({ guildId, state: 'unknown' })
+      .select({ _id: 1, action: 1, targetId: 1 })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(10)
+      .lean();
+    return records.map((record) => ({
+      id: String(record._id),
+      action: record.action as ModerationCase['action'],
+      targetId: record.targetId,
+    }));
   }
   async recover() {
     for await (const record of this.cases

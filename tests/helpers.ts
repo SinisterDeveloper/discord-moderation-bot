@@ -53,6 +53,7 @@ export function fixture() {
     listCases: vi.fn(async () => ({ records: [], next: null })),
     changeCase: vi.fn(async () => record),
     unresolved: vi.fn(async () => 0),
+    listUnresolved: vi.fn(async () => []),
     claimStaff: vi.fn(async () => null),
     finishStaff: vi.fn(async () => {}),
     claimDM: vi.fn(async () => true),
