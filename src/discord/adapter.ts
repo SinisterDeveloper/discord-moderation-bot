@@ -20,9 +20,9 @@ export function failure(error: unknown): ActionFailure {
 }
 export function auditReason(request: ActionRequest, caseId: string) {
   const prefix = `Case ${caseId}; actor ${request.actorId}; `;
-  let text = prefix + request.reason;
-  while (encodeURIComponent(text).length > 512) text = text.slice(0, -1);
-  return text;
+  const characters = Array.from(Buffer.from(request.reason).toString('utf8'));
+  while (encodeURIComponent(prefix + characters.join('')).length > 512) characters.pop();
+  return prefix + characters.join('');
 }
 export function caseSummary(record: ModerationCase) {
   return `Case ${record.id}\nAction: ${record.action}; outcome: ${record.state}${record.revoked ? ' (warning revoked)' : ''}\nUser: ${record.targetId}\nActor: ${record.actorId}\nReason: ${escapeMarkdown(record.reason)}\nCreated: <t:${Math.floor(record.createdAt.getTime() / 1000)}:f>\nDeliveries: DM ${record.dm.status}, staff ${record.staff.status}.${record.errorCode ? `\nReference: ${record.errorCode}` : ''}`;
@@ -41,6 +41,29 @@ export class DiscordAdapter implements DiscordPort {
       target = await guild.members.fetch({ user: request.targetId, force: true });
     } catch (error) {
       if (!(error instanceof DiscordAPIError && error.code === 10007)) throw error;
+    }
+    if (request.source === 'account_age' || request.source === 'invite_filter') {
+      if (
+        target?.user.bot ||
+        target?.permissions.has(PermissionFlagsBits.Administrator) ||
+        target?.roles.cache.some((role) => settings.exemptRoles.includes(role.id))
+      )
+        return 'noop';
+      if (request.source === 'account_age') {
+        if (
+          !target ||
+          !settings.accountAge.enabled ||
+          (Date.now() - target.user.createdTimestamp) / 86_400_000 >= settings.accountAge.days
+        )
+          return 'noop';
+        if (request.joinedAt && target.joinedAt?.toISOString() !== request.joinedAt) return 'noop';
+        if ((request.action === 'kick') !== (settings.accountAge.action === 'kick')) return 'noop';
+      }
+      if (
+        request.source === 'invite_filter' &&
+        (!settings.invites.enabled || settings.exemptChannels.includes(request.channelId!))
+      )
+        return 'noop';
     }
     checkPermissions(request, {
       ownerId: guild.ownerId,

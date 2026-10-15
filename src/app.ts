@@ -9,6 +9,8 @@ import { MongoStore } from './storage/store.js';
 import { ModerationService } from './moderation/service.js';
 import { DeliveryWorker } from './delivery.js';
 import { CommandRouter } from './commands/router.js';
+import { AutoModManager, DiscordNativePort } from './policies/automod.js';
+import { attachPolicies } from './policies/events.js';
 async function main() {
   const env = readEnvironment();
   const capabilities = {
@@ -59,7 +61,9 @@ async function main() {
     await store.recover();
     const adapter = new DiscordAdapter(client);
     const service = new ModerationService(store, adapter);
-    const router = new CommandRouter(client, store, service, capabilities);
+    const native = new AutoModManager(store, new DiscordNativePort(client));
+    const router = new CommandRouter(client, store, service, capabilities, native);
+    attachPolicies(client, store, service, capabilities);
     client.on(Events.InteractionCreate, (interaction) => {
       void router
         .handle(interaction)
