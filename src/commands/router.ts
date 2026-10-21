@@ -27,6 +27,7 @@ import {
 import { parseDuration, parseReason, snowflake, type Capabilities } from '../config.js';
 import {
   UserError,
+  resolveLogChannel,
   type Action,
   type ActionRequest,
   type GuildSettings,
@@ -185,6 +186,166 @@ export class CommandRouter {
       await interaction.respond([]).catch(() => {});
     }
   }
+  private async handleStatelessAppeal(
+    interaction: ButtonInteraction | ModalSubmitInteraction,
+  ): Promise<boolean> {
+    const parts = interaction.customId.split(':');
+    const op = parts[1];
+    try {
+      if (interaction.isButton?.() && op === 'open') {
+        const [, , guildId, caseId] = parts;
+        if (!guildId || !caseId) return false;
+        const settings = await this.store.getSettings(guildId);
+        if (settings.appeals?.enabled === false)
+          throw new UserError('Appeals are disabled for this server.');
+        const record = await this.store.getCase(guildId, caseId);
+        if (!record || record.targetId !== interaction.user.id)
+          throw new UserError('This case cannot be appealed by your account.');
+        if (record.appeal)
+          throw new UserError(`An appeal for this case is already ${record.appeal.status}.`);
+        const modal = new ModalBuilder()
+          .setCustomId(`v3a:submit:${guildId}:${record.id}`)
+          .setTitle(`Appeal Case ${caseRef(record)}`.slice(0, 45))
+          .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+              new TextInputBuilder()
+                .setCustomId('appeal')
+                .setLabel('Why should this action be reconsidered?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setMinLength(5)
+                .setMaxLength(400)
+                .setRequired(true),
+            ),
+          );
+        await interaction.showModal(modal);
+        return true;
+      }
+      if (interaction.isModalSubmit?.() && op === 'submit') {
+        const [, , guildId, caseId] = parts;
+        if (!guildId || !caseId) return false;
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const settings = await this.store.getSettings(guildId);
+        if (settings.appeals?.enabled === false)
+          throw new UserError('Appeals are disabled for this server.');
+        const text = parseReason(interaction.fields.getTextInputValue('appeal'));
+        const updated = this.store.submitAppeal
+          ? await this.store.submitAppeal(guildId, caseId, interaction.user.id, text)
+          : await this.store.changeCase(guildId, caseId, {
+              actorId: interaction.user.id,
+              at: new Date(),
+              kind: 'appeal',
+              previous: 'none',
+              value: text,
+            });
+        const appealChannelId = resolveLogChannel(settings, 'appealLog');
+        if (appealChannelId) {
+          try {
+            const guild = await this.client.guilds.fetch(guildId);
+            const channel = await guild.channels.fetch(appealChannelId);
+            if (channel?.isSendable()) {
+              const reviewEmbed = textEmbed(
+                `Case Appeal · ${caseRef(updated)}`,
+                [
+                  `**Member** ${person(updated.targetId)} (\`${updated.targetId}\`)`,
+                  `**Original action** ${actionLabel[updated.action]} · **Moderator** ${person(updated.actorId)}`,
+                  `**Original reason** ${escapeMarkdown(updated.reason)}`,
+                  `**Appeal statement**\n> ${escapeMarkdown(text).replace(/\n/g, '\n> ')}`,
+                ].join('\n'),
+                'warning',
+              );
+              const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`v3a:review:approve:${guildId}:${updated.id}`)
+                  .setLabel('Approve & Reverse')
+                  .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                  .setCustomId(`v3a:review:reject:${guildId}:${updated.id}`)
+                  .setLabel('Reject Appeal')
+                  .setStyle(ButtonStyle.Danger),
+              );
+              await channel.send({
+                embeds: [reviewEmbed],
+                components: [row],
+                allowedMentions: { parse: [] },
+              });
+            }
+          } catch {
+            logger.warn({ guildId, caseId: updated.id }, 'Appeal staff notification failed.');
+          }
+        }
+        await interaction.editReply(
+          embedReply(
+            textEmbed(
+              'Appeal submitted',
+              `Your appeal for Case ${caseRef(updated)} has been recorded for staff review.`,
+              'success',
+            ),
+          ),
+        );
+        return true;
+      }
+      if (interaction.isButton?.() && op === 'review') {
+        const [, , decision, guildId, caseId] = parts;
+        if (!guildId || !caseId || (decision !== 'approve' && decision !== 'reject')) return false;
+        await this.requirePermission(interaction, P.ManageGuild);
+        const status = decision === 'approve' ? 'approved' : 'rejected';
+        const record = this.store.reviewAppeal
+          ? await this.store.reviewAppeal(guildId, caseId, interaction.user.id, status)
+          : await this.store.getCase(guildId, caseId);
+        if (!record) throw new UserError('Case not found.');
+        if (status === 'approved') {
+          if (record.action === 'warn' && !record.revoked) {
+            await this.store.changeCase(guildId, record.id, {
+              actorId: interaction.user.id,
+              at: new Date(),
+              kind: 'revoke',
+              previous: record.state,
+              value: `Appeal approved by ${interaction.user.id}.`,
+            });
+          } else if (record.action === 'ban' || record.action === 'tempban') {
+            await this.service.execute({
+              guildId,
+              targetId: record.targetId,
+              actorId: interaction.user.id,
+              source: 'manual',
+              action: 'unban',
+              reason: `Appeal approved for Case ${caseRef(record)}.`,
+              requestKey: `appeal:unban:${record.id}`,
+            });
+          } else if (record.action === 'timeout') {
+            await this.service.execute({
+              guildId,
+              targetId: record.targetId,
+              actorId: interaction.user.id,
+              source: 'manual',
+              action: 'untimeout',
+              reason: `Appeal approved for Case ${caseRef(record)}.`,
+              requestKey: `appeal:untimeout:${record.id}`,
+            });
+          }
+        }
+        await interaction.update(
+          embedReply(
+            textEmbed(
+              `Appeal ${status === 'approved' ? 'Approved' : 'Rejected'} · ${caseRef(record)}`,
+              `Reviewed by ${person(interaction.user.id)} for ${person(record.targetId)}.`,
+              status === 'approved' ? 'success' : 'error',
+            ),
+          ),
+        );
+        return true;
+      }
+      return false;
+    } catch (error) {
+      const content =
+        error instanceof UserError ? error.message : 'The appeal request could not be completed.';
+      const response = embedReply(textEmbed('Appeal not completed', content, 'warning'));
+      if (interaction.deferred || interaction.replied)
+        await interaction.editReply(response).catch(() => {});
+      else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral }).catch(() => {});
+      return false;
+    }
+  }
   async handle(interaction: Interaction) {
     if (interaction.isAutocomplete?.()) {
       await this.handleAutocomplete(interaction);
@@ -197,6 +358,12 @@ export class CommandRouter {
     const isUserCtx = interaction.isUserContextMenuCommand?.() ?? false;
     const isMsgCtx = interaction.isMessageContextMenuCommand?.() ?? false;
     if (!isCmd && !isBtn && !isSelect && !isModal && !isUserCtx && !isMsgCtx) return;
+    if (
+      (isBtn || isModal) &&
+      (interaction as ButtonInteraction | ModalSubmitInteraction).customId?.startsWith('v3a:')
+    ) {
+      return this.handleStatelessAppeal(interaction as ButtonInteraction | ModalSubmitInteraction);
+    }
     const active = interaction as Interactive;
     if (!active.inGuild()) {
       if ('reply' in active)
@@ -948,11 +1115,67 @@ export class CommandRouter {
       ],
     };
   }
+  private async sendReportAlert(
+    guildId: string,
+    reporterId: string,
+    targetId: string,
+    reason: string,
+    channelId?: string,
+    messageId?: string,
+    snippet?: string,
+  ) {
+    const settings = await this.store.getSettings(guildId);
+    if (settings.reports?.enabled === false)
+      throw new UserError('Member reporting is disabled in this server.');
+    const reportChannelId = resolveLogChannel(settings, 'reportLog');
+    if (!reportChannelId)
+      throw new UserError('Reporting is not configured yet. Ask staff to run /setup.');
+    const guild = await this.client.guilds.fetch(guildId);
+    const channel = await guild.channels.fetch(reportChannelId);
+    if (!channel?.isSendable())
+      throw new UserError('The configured report channel is unavailable.');
+    const embed = textEmbed(
+      'Member Report',
+      [
+        `**Reported user** ${person(targetId)} (\`${targetId}\`)`,
+        `**Reported by** ${person(reporterId)} (\`${reporterId}\`)`,
+        ...(channelId
+          ? [`**Channel** <#${channelId}>${messageId ? ` · **Message** \`${messageId}\`` : ''}`]
+          : []),
+        `**Reason** ${escapeMarkdown(reason)}`,
+        ...(snippet
+          ? [
+              `**Message snapshot**\n> ${escapeMarkdown(snippet.slice(0, 300)).replace(/\n/g, '\n> ')}`,
+            ]
+          : []),
+      ].join('\n'),
+      'warning',
+    );
+    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  }
   private async messageContext(interaction: MessageContextMenuCommandInteraction): Promise<Reply> {
-    await this.requirePermission(interaction, P.ModerateMembers);
     const guildId = interaction.guildId!;
     const msg = interaction.targetMessage;
     const targetId = msg.author.id;
+    if (interaction.commandName === 'Report Message') {
+      await this.sendReportAlert(
+        guildId,
+        interaction.user.id,
+        targetId,
+        'Reported via Message Context Menu',
+        interaction.channelId,
+        msg.id,
+        msg.content,
+      );
+      return embedReply(
+        textEmbed(
+          'Report sent',
+          'Thank you. Your report and the message snapshot have been sent to server staff.',
+          'success',
+        ),
+      );
+    }
+    await this.requirePermission(interaction, P.ModerateMembers);
     const snippet = msg.content ? escapeMarkdown(msg.content.slice(0, 300)) : '*No text content*';
     const embed = textEmbed(
       'Moderate Message',
@@ -1172,6 +1395,20 @@ export class CommandRouter {
         settings.escalations = current;
         break;
       }
+      case 'appeals': {
+        const enabled = o.getBoolean('enabled', true);
+        settings.appeals = { enabled };
+        const chan = o.getChannel?.('channel')?.id;
+        if (chan) await this.setLogChannel(settings, chan, 'appealLog');
+        break;
+      }
+      case 'reports': {
+        const enabled = o.getBoolean('enabled', true);
+        settings.reports = { enabled };
+        const chan = o.getChannel?.('channel')?.id;
+        if (chan) await this.setLogChannel(settings, chan, 'reportLog');
+        break;
+      }
       default:
         throw new UserError('Unknown configuration operation.');
     }
@@ -1383,6 +1620,22 @@ export class CommandRouter {
       return embedReply(embed);
     }
     if (name === 'setup' || name === 'config') return this.config(interaction);
+    if (name === 'report') {
+      const targetUser = o.getUser('user', true);
+      const reason = parseReason(o.getString('reason', true));
+      const msgId = o.getString?.('message-id') ?? undefined;
+      await this.sendReportAlert(
+        guildId,
+        interaction.user.id,
+        targetUser.id,
+        reason,
+        interaction.channelId,
+        msgId,
+      );
+      return embedReply(
+        textEmbed('Report sent', 'Your report has been delivered to server staff.', 'success'),
+      );
+    }
     if (name === 'cases') return this.history(interaction, o.getUser('user', true).id);
     if (name === 'case') {
       const sub = o.getSubcommand();

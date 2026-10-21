@@ -60,6 +60,18 @@ export interface Store {
   claimExpired?(now?: Date): Promise<ModerationCase | null>;
   finishExpired?(guildId: string, id: string): Promise<void>;
   countActiveWarnings?(guildId: string, targetId: string, since: Date, now?: Date): Promise<number>;
+  submitAppeal?(
+    guildId: string,
+    id: string,
+    actorId: string,
+    text: string,
+  ): Promise<ModerationCase>;
+  reviewAppeal?(
+    guildId: string,
+    id: string,
+    reviewerId: string,
+    status: 'approved' | 'rejected',
+  ): Promise<ModerationCase>;
 }
 
 const deliverySchema = new Schema(
@@ -88,6 +100,8 @@ const settingsSchema = new Schema(
     accountAge: { type: Schema.Types.Mixed, required: true },
     invites: { type: Schema.Types.Mixed, required: true },
     escalations: Schema.Types.Mixed,
+    appeals: Schema.Types.Mixed,
+    reports: Schema.Types.Mixed,
     exemptRoles: [String],
     exemptChannels: [String],
     legacyMuteRoleId: { type: String, default: null },
@@ -127,6 +141,7 @@ const caseSchema = new Schema(
     dm: deliverySchema,
     staff: deliverySchema,
     revoked: { type: Boolean, default: false },
+    appeal: Schema.Types.Mixed,
     changes: { type: [Schema.Types.Mixed], default: [] },
     legacy: Schema.Types.Mixed,
   },
@@ -204,17 +219,6 @@ export class MongoStore implements Store {
       .lean();
     if (existing) return { record: asCase(existing), created: false };
     const now = new Date();
-    const counterDoc = await this.settings
-      .findOneAndUpdate(
-        { guildId: request.guildId },
-        {
-          $inc: { lastCaseNumber: 1 },
-          $setOnInsert: defaultSettings(request.guildId),
-        },
-        { upsert: true, returnDocument: 'after' },
-      )
-      .lean();
-    const caseNumber = (counterDoc as Raw | null)?.lastCaseNumber as number | undefined;
     const isAlert = request.action === 'account_age_alert' || request.action === 'invite_delete';
     const targetLogChannel = isAlert
       ? (settings.channels?.alertLog ?? settings.channels?.modLog ?? settings.logChannelId)
@@ -222,7 +226,6 @@ export class MongoStore implements Store {
     try {
       const raw = await this.cases.create({
         ...request,
-        ...(caseNumber !== undefined ? { caseNumber } : {}),
         state: 'pending',
         createdAt: now,
         updatedAt: now,
@@ -233,7 +236,25 @@ export class MongoStore implements Store {
         ),
         staff: delivery(false),
       });
-      return { record: asCase(raw.toObject()), created: true };
+      const counterDoc = await this.settings
+        .findOneAndUpdate(
+          { guildId: request.guildId },
+          {
+            $inc: { lastCaseNumber: 1 },
+            $setOnInsert: defaultSettings(request.guildId),
+          },
+          { upsert: true, returnDocument: 'after' },
+        )
+        .lean();
+      const caseNumber = (counterDoc as Raw | null)?.lastCaseNumber as number | undefined;
+      if (caseNumber !== undefined) {
+        await this.cases.updateOne({ _id: raw._id }, { $set: { caseNumber } });
+      }
+      const obj = raw.toObject();
+      return {
+        record: asCase(caseNumber !== undefined ? { ...obj, caseNumber } : obj),
+        created: true,
+      };
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 11000)) throw error;
       const duplicate = await this.cases
@@ -516,5 +537,61 @@ export class MongoStore implements Store {
       createdAt: { $gte: since },
       $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }, { expiresAt: { $gt: now } }],
     });
+  }
+  async submitAppeal(guildId: string, id: string, actorId: string, text: string) {
+    const now = new Date();
+    const change: CaseChange = {
+      actorId,
+      at: now,
+      kind: 'appeal',
+      previous: 'none',
+      value: text.slice(0, 400),
+    };
+    const raw = await this.cases
+      .findOneAndUpdate(
+        {
+          guildId,
+          _id: id,
+          targetId: actorId,
+          appeal: { $exists: false },
+          'changes.99': { $exists: false },
+        },
+        {
+          $set: {
+            updatedAt: now,
+            appeal: { status: 'pending', text, submittedAt: now },
+          },
+          $push: { changes: change },
+        },
+        { returnDocument: 'after' },
+      )
+      .lean();
+    if (!raw)
+      throw new UserError('An appeal has already been submitted or this case cannot be appealed.');
+    return asCase(raw);
+  }
+  async reviewAppeal(
+    guildId: string,
+    id: string,
+    reviewerId: string,
+    status: 'approved' | 'rejected',
+  ) {
+    const now = new Date();
+    const raw = await this.cases
+      .findOneAndUpdate(
+        { guildId, _id: id, 'appeal.status': 'pending' },
+        {
+          $set: {
+            updatedAt: now,
+            'appeal.status': status,
+            'appeal.reviewedBy': reviewerId,
+            'appeal.reviewedAt': now,
+          },
+        },
+        { returnDocument: 'after' },
+      )
+      .lean();
+    if (!raw) throw new UserError('This appeal was already reviewed or could not be found.');
+    return asCase(raw);
   }
 }

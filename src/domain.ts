@@ -59,6 +59,13 @@ export interface EscalationSettings {
   warnDecayDays: number | null;
   rules: EscalationRule[];
 }
+export interface AppealRecord {
+  status: 'pending' | 'approved' | 'rejected';
+  text: string;
+  submittedAt: Date;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+}
 export interface GuildSettings {
   guildId: string;
   version: number;
@@ -70,6 +77,8 @@ export interface GuildSettings {
   accountAge: { enabled: boolean; days: number; action: 'alert' | 'kick' };
   invites: { enabled: boolean };
   escalations?: EscalationSettings;
+  appeals?: { enabled: boolean };
+  reports?: { enabled: boolean };
   exemptRoles: string[];
   exemptChannels: string[];
   legacyMuteRoleId: string | null;
@@ -156,6 +165,7 @@ export interface ModerationCase extends ActionRequest {
   staff: Delivery;
   revoked: boolean;
   expiredProcessed?: boolean;
+  appeal?: AppealRecord;
   changes: CaseChange[];
   legacy?: { sourceId: string; rawDate: string; rawType: string; raw: Record<string, unknown> };
 }

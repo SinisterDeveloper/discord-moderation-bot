@@ -293,6 +293,82 @@ describe('interaction handling', () => {
     expect(await router.handle(whoisCmd as unknown as ChatInputCommandInteraction)).toBe(true);
     expect(whoisCmd.editReply.mock.calls[0]![0].embeds[0].toJSON().title).toBe('Member Dossier');
   });
+  it('handles stateless DM case appeals and staff approval reversal', async () => {
+    const f = fixture();
+    f.record.action = 'warn';
+    f.record.state = 'succeeded';
+    f.store.submitAppeal = vi.fn(async () => ({
+      ...f.record,
+      appeal: { status: 'pending' as const, text: 'Please reconsider', submittedAt: new Date() },
+    }));
+    f.store.reviewAppeal = vi.fn(async () => ({
+      ...f.record,
+      appeal: {
+        status: 'approved' as const,
+        text: 'Please reconsider',
+        submittedAt: new Date(),
+        reviewedBy: actorId,
+      },
+    }));
+    const sendLog = vi.fn().mockResolvedValue({ id: '999' });
+    const client = {
+      guilds: {
+        fetch: async () => ({
+          ownerId: actorId,
+          members: { fetch: async () => ({ id: actorId, permissions: { has: () => true } }) },
+          channels: { fetch: async () => ({ isSendable: () => true, send: sendLog }) },
+        }),
+      },
+    } as unknown as Client;
+    const router = new CommandRouter(client, f.store, new ModerationService(f.store, f.discord), {
+      memberEvents: false,
+      messageFilter: false,
+    });
+    const showModal = vi.fn().mockResolvedValue(undefined);
+    const dmOpenBtn = {
+      user: { id: targetId },
+      isButton: () => true,
+      inGuild: () => false,
+      customId: `v3a:open:${guildId}:${f.record.id}`,
+      showModal,
+    };
+    expect(await router.handle(dmOpenBtn as unknown as ButtonInteraction)).toBe(true);
+    expect(showModal).toHaveBeenCalledOnce();
+
+    const dmSubmitModal = {
+      user: { id: targetId },
+      isModalSubmit: () => true,
+      inGuild: () => false,
+      customId: `v3a:submit:${guildId}:${f.record.id}`,
+      fields: { getTextInputValue: () => 'I apologize and will follow the rules.' },
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+    };
+    expect(await router.handle(dmSubmitModal as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(f.store.submitAppeal).toHaveBeenCalledWith(
+      guildId,
+      f.record.id,
+      targetId,
+      'I apologize and will follow the rules.',
+    );
+    expect(sendLog).toHaveBeenCalledOnce();
+
+    const staffApproveBtn = {
+      guildId,
+      user: { id: actorId },
+      isButton: () => true,
+      inGuild: () => true,
+      customId: `v3a:review:approve:${guildId}:${f.record.id}`,
+      update: vi.fn().mockResolvedValue(undefined),
+    };
+    expect(await router.handle(staffApproveBtn as unknown as ButtonInteraction)).toBe(true);
+    expect(f.store.reviewAppeal).toHaveBeenCalledWith(guildId, f.record.id, actorId, 'approved');
+    expect(f.store.changeCase).toHaveBeenCalledWith(
+      guildId,
+      f.record.id,
+      expect.objectContaining({ kind: 'revoke' }),
+    );
+  });
 });
 afterEach(() => vi.useRealTimers());
 describe('commands and permissions', () => {

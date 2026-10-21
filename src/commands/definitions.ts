@@ -404,6 +404,50 @@ const commands = [
             .setDescription('Duration for timeout or tempban (e.g. 12h, 7d).')
             .setMaxLength(12),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('appeals')
+        .setDescription('Enable or disable in-Discord DM case appeals.')
+        .addBooleanOption((o) =>
+          o.setName('enabled').setDescription('Allow users to appeal via DM.').setRequired(true),
+        )
+        .addChannelOption((o) =>
+          o
+            .setName('channel')
+            .setDescription('Optional dedicated appeal review channel.')
+            .addChannelTypes(ChannelType.GuildText),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('reports')
+        .setDescription('Enable or disable member reporting (/report and Report Message).')
+        .addBooleanOption((o) =>
+          o.setName('enabled').setDescription('Allow member reports.').setRequired(true),
+        )
+        .addChannelOption((o) =>
+          o
+            .setName('channel')
+            .setDescription('Optional dedicated member report channel.')
+            .addChannelTypes(ChannelType.GuildText),
+        ),
+    ),
+  base('report', 'Report a member or message to server staff.')
+    .addUserOption((o) => o.setName('user').setDescription('Member to report.').setRequired(true))
+    .addStringOption((o) =>
+      o
+        .setName('reason')
+        .setDescription('Details of the issue.')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(400),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('message-id')
+        .setDescription('Optional message ID being reported.')
+        .setMaxLength(24),
     ),
   base('automod', 'Manage native Discord AutoMod presets.', P.ManageGuild)
     .addSubcommand((s) => s.setName('status').setDescription('Show owned rules and drift.'))
@@ -433,5 +477,6 @@ const commands = [
     .addSubcommand((s) => preset(s.setName('disable').setDescription('Disable an owned rule.'))),
   contextMenu('Inspect & Moderate', ApplicationCommandType.User, P.ModerateMembers),
   contextMenu('Moderate Message', ApplicationCommandType.Message, P.ModerateMembers),
+  contextMenu('Report Message', ApplicationCommandType.Message),
 ];
 export const commandDefinitions = commands.map((command) => command.toJSON());

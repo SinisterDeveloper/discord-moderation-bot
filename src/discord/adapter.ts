@@ -1,4 +1,11 @@
-import { Client, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Client,
+  DiscordAPIError,
+  PermissionFlagsBits,
+} from 'discord.js';
 import {
   ActionFailure,
   UserError,
@@ -229,12 +236,24 @@ export class DiscordAdapter implements DiscordPort {
   async sendDM(record: ModerationCase) {
     try {
       const user = await this.client.users.fetch(record.targetId);
+      const appealable = ['ban', 'tempban', 'kick', 'warn', 'timeout'].includes(record.action);
+      const components = appealable
+        ? [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`v3a:open:${record.guildId}:${record.id}`)
+                .setLabel('Submit Appeal')
+                .setStyle(ButtonStyle.Secondary),
+            ),
+          ]
+        : [];
       await user.send({
         embeds: [
           caseEmbed(record).setAuthor({
             name: this.client.guilds.cache.get(record.guildId)?.name ?? `Server ${record.guildId}`,
           }),
         ],
+        components,
         allowedMentions: { parse: [] },
       });
     } catch (error) {

@@ -65,11 +65,12 @@ describe('MongoDB storage', () => {
     const other = '1108716196024561765';
     await store.insertCase(request({ guildId: other }), await store.getSettings(other));
     expect((await store.listCases(guildId, targetId)).records).toHaveLength(1);
-    expect(results[0]!.record.caseNumber).toBe(1);
-    expect((await store.getCase(guildId, '#1'))?.id).toBe(results[0]!.record.id);
-    expect((await store.getCase(guildId, '1'))?.id).toBe(results[0]!.record.id);
-    expect((await store.searchCases(guildId, '#1'))[0]?.id).toBe(results[0]!.record.id);
-    expect(await store.getCase(other, results[0]!.record.id)).toBeNull();
+    const winner = results.find((r) => r.created)!;
+    expect(winner.record.caseNumber).toBe(1);
+    expect((await store.getCase(guildId, '#1'))?.id).toBe(winner.record.id);
+    expect((await store.getCase(guildId, '1'))?.id).toBe(winner.record.id);
+    expect((await store.searchCases(guildId, '#1'))[0]?.id).toBe(winner.record.id);
+    expect(await store.getCase(other, winner.record.id)).toBeNull();
   });
   it('rejects stale settings updates', async () => {
     const first = await store.getSettings(guildId);
