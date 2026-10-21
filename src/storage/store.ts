@@ -59,6 +59,7 @@ export interface Store {
   finishDM(guildId: string, id: string, code: string | null): Promise<void>;
   claimExpired?(now?: Date): Promise<ModerationCase | null>;
   finishExpired?(guildId: string, id: string): Promise<void>;
+  countActiveWarnings?(guildId: string, targetId: string, since: Date, now?: Date): Promise<number>;
 }
 
 const deliverySchema = new Schema(
@@ -86,6 +87,7 @@ const settingsSchema = new Schema(
     dmEnabled: { type: Boolean, required: true },
     accountAge: { type: Schema.Types.Mixed, required: true },
     invites: { type: Schema.Types.Mixed, required: true },
+    escalations: Schema.Types.Mixed,
     exemptRoles: [String],
     exemptChannels: [String],
     legacyMuteRoleId: { type: String, default: null },
@@ -503,5 +505,16 @@ export class MongoStore implements Store {
       { guildId, _id: id },
       { $set: { expiredProcessed: true, updatedAt: new Date() } },
     );
+  }
+  async countActiveWarnings(guildId: string, targetId: string, since: Date, now = new Date()) {
+    return this.cases.countDocuments({
+      guildId,
+      targetId,
+      action: 'warn',
+      state: 'succeeded',
+      revoked: false,
+      createdAt: { $gte: since },
+      $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }, { expiresAt: { $gt: now } }],
+    });
   }
 }

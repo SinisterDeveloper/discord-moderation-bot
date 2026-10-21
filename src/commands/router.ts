@@ -647,6 +647,76 @@ export class CommandRouter {
         settings.invites.enabled,
         true,
       );
+      const editEscalationModal = this.makeModalButton(
+        interaction,
+        'Configure Escalations',
+        'Warning Escalation Rule',
+        [
+          {
+            id: 'threshold',
+            label: 'Warning threshold (e.g. 3)',
+            value: '3',
+            maxLength: 2,
+          },
+          {
+            id: 'windowDays',
+            label: 'Window in days (e.g. 30)',
+            value: '30',
+            maxLength: 3,
+          },
+          {
+            id: 'action',
+            label: 'Action (timeout, tempban, kick, ban)',
+            value: 'timeout',
+            maxLength: 10,
+          },
+          {
+            id: 'duration',
+            label: 'Duration if timeout/tempban (e.g. 12h, 7d)',
+            value: '12h',
+            required: false,
+            maxLength: 12,
+          },
+        ],
+        async (mod) => {
+          await this.requirePermission(mod, P.ManageGuild);
+          const threshold = Number(mod.fields.getTextInputValue('threshold').trim());
+          const windowDays = Number(mod.fields.getTextInputValue('windowDays').trim());
+          const action = mod.fields.getTextInputValue('action').trim().toLowerCase() as
+            'timeout' | 'tempban' | 'kick' | 'ban';
+          const durRaw = mod.fields.getTextInputValue('duration').trim();
+          if (!Number.isInteger(threshold) || threshold < 1 || threshold > 50)
+            throw new UserError('Threshold must be between 1 and 50.');
+          if (!Number.isInteger(windowDays) || windowDays < 1 || windowDays > 365)
+            throw new UserError('Window days must be between 1 and 365.');
+          if (!['timeout', 'tempban', 'kick', 'ban'].includes(action))
+            throw new UserError('Action must be timeout, tempban, kick, or ban.');
+          const durationMs =
+            action === 'timeout'
+              ? parseDuration(durRaw || '12h', 28)
+              : action === 'tempban'
+                ? parseDuration(durRaw || '7d', 365)
+                : undefined;
+          const current = await this.store.getSettings(guildId);
+          const esc = current.escalations ?? {
+            enabled: true,
+            warnDecayDays: 30,
+            rules: [],
+          };
+          esc.enabled = true;
+          esc.rules = [
+            ...esc.rules.filter((r) => r.threshold !== threshold),
+            { threshold, windowDays, action, ...(durationMs ? { durationMs } : {}) },
+          ].sort((a, b) => a.threshold - b.threshold);
+          current.escalations = esc;
+          await this.store.saveSettings(current);
+          return this.panel(
+            mod,
+            'policies',
+            `Escalation rule saved (${threshold} warns → ${action})`,
+          );
+        },
+      );
       return {
         ...embedReply(embed),
         components: [
@@ -656,6 +726,7 @@ export class CommandRouter {
             toggleMode,
             editDaysModal,
             toggleInvites,
+            editEscalationModal,
           ),
         ],
       };
@@ -1064,6 +1135,41 @@ export class CommandRouter {
             : settings[key].filter((id) => id !== value);
         if (settings[key].length > (role ? 20 : 50))
           throw new UserError('The exemption list is full.');
+        break;
+      }
+      case 'escalation': {
+        const enabled = o.getBoolean('enabled', true);
+        const current = settings.escalations ?? {
+          enabled: false,
+          warnDecayDays: null,
+          rules: [],
+        };
+        current.enabled = enabled;
+        const decay = o.getInteger?.('decay-days') ?? null;
+        if (decay !== null) current.warnDecayDays = decay === 0 ? null : decay;
+        const threshold = o.getInteger?.('threshold') ?? null;
+        const action = o.getString?.('action') as 'timeout' | 'tempban' | 'kick' | 'ban' | null;
+        if (threshold !== null && action) {
+          const windowDays = o.getInteger?.('window-days') ?? 30;
+          const durRaw = o.getString?.('duration') ?? null;
+          const durationMs =
+            action === 'timeout'
+              ? parseDuration(durRaw ?? '1h', 28)
+              : action === 'tempban'
+                ? parseDuration(durRaw ?? '7d', 365)
+                : undefined;
+          const nextRules = current.rules.filter((r) => r.threshold !== threshold);
+          nextRules.push({
+            threshold,
+            windowDays,
+            action,
+            ...(durationMs ? { durationMs } : {}),
+          });
+          if (nextRules.length > 10)
+            throw new UserError('At most 10 escalation rules are supported.');
+          current.rules = nextRules.sort((a, b) => a.threshold - b.threshold);
+        }
+        settings.escalations = current;
         break;
       }
       default:

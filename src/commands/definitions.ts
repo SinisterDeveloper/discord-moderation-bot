@@ -358,6 +358,52 @@ const commands = [
         .addChannelOption((o) =>
           o.setName('channel').setDescription('Exempt channel.').setRequired(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('escalation')
+        .setDescription('Configure warning decay and automated strike escalations.')
+        .addBooleanOption((o) =>
+          o.setName('enabled').setDescription('Enable automated escalations.').setRequired(true),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('decay-days')
+            .setDescription('Days until warnings expire (0 for never, max 3650).')
+            .setMinValue(0)
+            .setMaxValue(3650),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('threshold')
+            .setDescription('Active warning count trigger (1–50).')
+            .setMinValue(1)
+            .setMaxValue(50),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('window-days')
+            .setDescription('Lookback window in days (1–365).')
+            .setMinValue(1)
+            .setMaxValue(365),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('action')
+            .setDescription('Action to take at threshold.')
+            .setChoices(
+              { name: 'Timeout', value: 'timeout' },
+              { name: 'Temporary ban', value: 'tempban' },
+              { name: 'Kick', value: 'kick' },
+              { name: 'Permanent ban', value: 'ban' },
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('duration')
+            .setDescription('Duration for timeout or tempban (e.g. 12h, 7d).')
+            .setMaxLength(12),
+        ),
     ),
   base('automod', 'Manage native Discord AutoMod presets.', P.ManageGuild)
     .addSubcommand((s) => s.setName('status').setDescription('Show owned rules and drift.'))

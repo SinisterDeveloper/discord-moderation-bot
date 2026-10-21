@@ -48,6 +48,17 @@ export interface LogChannels {
   appealLog?: string | null;
   reportLog?: string | null;
 }
+export interface EscalationRule {
+  threshold: number;
+  windowDays: number;
+  action: 'timeout' | 'tempban' | 'kick' | 'ban';
+  durationMs?: number;
+}
+export interface EscalationSettings {
+  enabled: boolean;
+  warnDecayDays: number | null;
+  rules: EscalationRule[];
+}
 export interface GuildSettings {
   guildId: string;
   version: number;
@@ -58,6 +69,7 @@ export interface GuildSettings {
   dmEnabled: boolean;
   accountAge: { enabled: boolean; days: number; action: 'alert' | 'kick' };
   invites: { enabled: boolean };
+  escalations?: EscalationSettings;
   exemptRoles: string[];
   exemptChannels: string[];
   legacyMuteRoleId: string | null;

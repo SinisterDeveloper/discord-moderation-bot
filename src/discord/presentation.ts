@@ -110,6 +110,11 @@ export function settingsEmbed(settings: GuildSettings) {
       `**Action DMs** ${settings.dmEnabled ? 'On' : 'Off'}`,
       `**Account age** ${age.enabled ? `${age.days} days · ${age.action === 'kick' ? 'Kick' : 'Alert'}` : 'Off'}`,
       `**Invite filter** ${settings.invites.enabled ? 'On' : 'Off'}`,
+      ...(settings.escalations
+        ? [
+            `**Escalations** ${settings.escalations.enabled ? `On (${settings.escalations.rules.length} rules${settings.escalations.warnDecayDays ? ` · ${settings.escalations.warnDecayDays}d decay` : ''})` : 'Off'}`,
+          ]
+        : []),
       ...(!settings.exemptRoles.length && !settings.exemptChannels.length
         ? ['**Exemptions** None']
         : []),

@@ -152,4 +152,22 @@ describe('staff delivery', () => {
       }),
     );
   });
+  it('triggers automated strike escalation when active warnings reach a configured threshold', async () => {
+    const f = fixture();
+    f.settings.escalations = {
+      enabled: true,
+      warnDecayDays: 30,
+      rules: [{ threshold: 3, windowDays: 30, action: 'timeout', durationMs: 3_600_000 }],
+    };
+    f.store.countActiveWarnings = vi.fn().mockResolvedValue(3);
+    const service = new ModerationService(f.store, f.discord);
+    const spy = vi.spyOn(service, 'execute');
+    await service.execute(request({ action: 'warn', requestKey: 'warn-3' }));
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1]![0]).toMatchObject({
+      action: 'timeout',
+      source: 'escalation',
+      durationMs: 3_600_000,
+    });
+  });
 });
