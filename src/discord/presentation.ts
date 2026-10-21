@@ -5,11 +5,18 @@ const colors = { info: 0x5865f2, success: 0x3ba55d, warning: 0xf0b232, error: 0x
 export type Tone = keyof typeof colors;
 export const actionLabel: Record<Action, string> = {
   ban: 'Ban',
+  tempban: 'Temporary ban',
+  softban: 'Softban',
   unban: 'Unban',
   kick: 'Kick',
   warn: 'Warning',
+  note: 'Staff note',
   timeout: 'Timeout',
   untimeout: 'Timeout removal',
+  purge: 'Message purge',
+  lock: 'Channel lock',
+  unlock: 'Channel unlock',
+  slowmode: 'Slowmode update',
   legacy_unmute: 'Legacy mute release',
   account_age_alert: 'Account-age alert',
   invite_delete: 'Invite removal',

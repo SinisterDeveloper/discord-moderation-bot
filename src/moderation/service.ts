@@ -37,6 +37,18 @@ export class ModerationService {
       (!request.durationMs || request.durationMs < 1000 || request.durationMs > 2_419_200_000)
     )
       throw new UserError('Timeouts must be between 1 second and 28 days.');
+    if (
+      request.action === 'tempban' &&
+      (!request.durationMs || request.durationMs < 1000 || request.durationMs > 365 * 86_400_000)
+    )
+      throw new UserError('Temporary bans must be between 1 second and 365 days.');
+    if (
+      (request.action === 'tempban' || request.action === 'lock') &&
+      request.durationMs &&
+      !request.expiresAt
+    ) {
+      request = { ...request, expiresAt: new Date(Date.now() + request.durationMs) };
+    }
     if (!this.store.available())
       throw new UserError('The database is unavailable. No action was performed.', 'UNAVAILABLE');
     const lock = `${request.guildId}:${request.targetId}`;

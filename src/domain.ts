@@ -1,11 +1,18 @@
 import { randomUUID } from 'node:crypto';
 export const actions = [
   'ban',
+  'tempban',
+  'softban',
   'unban',
   'kick',
   'warn',
+  'note',
   'timeout',
   'untimeout',
+  'purge',
+  'lock',
+  'unlock',
+  'slowmode',
   'legacy_unmute',
   'account_age_alert',
   'invite_delete',
@@ -15,7 +22,16 @@ export const actions = [
 export type Action = (typeof actions)[number];
 export type CaseState =
   'pending' | 'executing' | 'succeeded' | 'failed' | 'unknown' | 'legacy_unverified';
-export type Source = 'manual' | 'account_age' | 'invite_filter' | 'legacy' | 'live_test';
+export type Source =
+  | 'manual'
+  | 'account_age'
+  | 'invite_filter'
+  | 'escalation'
+  | 'expiry'
+  | 'raid_protection'
+  | 'audit_sync'
+  | 'legacy'
+  | 'live_test';
 export type Preset = 'mentions' | 'words' | 'keywords';
 export interface ManagedPreset {
   key: string;
@@ -77,6 +93,13 @@ export function defaultSettings(guildId: string): GuildSettings {
     automod: { mentions: preset(), words: preset(), keywords: preset() },
   };
 }
+export interface PurgeFilter {
+  count: number;
+  targetId?: string;
+  contains?: string;
+  botsOnly?: boolean;
+  attachmentsOnly?: boolean;
+}
 export interface ActionRequest {
   guildId: string;
   targetId: string;
@@ -86,6 +109,10 @@ export interface ActionRequest {
   source: Source;
   reason: string;
   durationMs?: number;
+  expiresAt?: Date;
+  deleteMessageSeconds?: number;
+  purgeFilter?: PurgeFilter;
+  slowmodeSeconds?: number;
   channelId?: string;
   messageId?: string;
   joinedAt?: string;
@@ -116,6 +143,7 @@ export interface ModerationCase extends ActionRequest {
   dm: Delivery;
   staff: Delivery;
   revoked: boolean;
+  expiredProcessed?: boolean;
   changes: CaseChange[];
   legacy?: { sourceId: string; rawDate: string; rawType: string; raw: Record<string, unknown> };
 }

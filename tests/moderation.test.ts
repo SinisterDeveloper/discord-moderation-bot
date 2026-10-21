@@ -128,4 +128,28 @@ describe('staff delivery', () => {
     expect(f.store.finishStaff).toHaveBeenCalledWith(f.record, '50013', true);
     expect(f.discord.perform).not.toHaveBeenCalled();
   });
+  it('automatically unbans expired tempbans through DeliveryWorker', async () => {
+    const f = fixture();
+    const expiredTempban = {
+      ...f.record,
+      id: '9999999999abcdef01234567',
+      caseNumber: 12,
+      action: 'tempban' as const,
+      state: 'succeeded' as const,
+      durationMs: 60_000,
+      expiresAt: new Date(Date.now() - 1000),
+    };
+    f.store.claimExpired = vi.fn().mockResolvedValueOnce(expiredTempban).mockResolvedValue(null);
+    const service = new ModerationService(f.store, f.discord);
+    const spy = vi.spyOn(service, 'execute');
+    await new DeliveryWorker(f.store, f.discord, service, () => '1108716196024561767').tick();
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'unban',
+        source: 'expiry',
+        targetId: expiredTempban.targetId,
+        requestKey: `expiry:${expiredTempban.id}`,
+      }),
+    );
+  });
 });

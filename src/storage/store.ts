@@ -57,6 +57,8 @@ export interface Store {
   ): Promise<void>;
   claimDM(guildId: string, id: string): Promise<boolean>;
   finishDM(guildId: string, id: string, code: string | null): Promise<void>;
+  claimExpired?(now?: Date): Promise<ModerationCase | null>;
+  finishExpired?(guildId: string, id: string): Promise<void>;
 }
 
 const deliverySchema = new Schema(
@@ -110,6 +112,11 @@ const caseSchema = new Schema(
     updatedAt: { type: Date, required: true },
     errorCode: { type: String, default: null },
     durationMs: Number,
+    expiresAt: Date,
+    expiredProcessed: { type: Boolean, default: false },
+    deleteMessageSeconds: Number,
+    purgeFilter: Schema.Types.Mixed,
+    slowmodeSeconds: Number,
     channelId: String,
     messageId: String,
     joinedAt: String,
@@ -127,6 +134,7 @@ caseSchema.index({ guildId: 1, requestKey: 1 }, { unique: true });
 caseSchema.index({ guildId: 1, caseNumber: -1 });
 caseSchema.index({ guildId: 1, targetId: 1, createdAt: -1, _id: -1 });
 caseSchema.index({ guildId: 1, state: 1 });
+caseSchema.index({ state: 1, expiredProcessed: 1, expiresAt: 1 });
 caseSchema.index({ 'staff.status': 1, 'staff.nextAttemptAt': 1 });
 
 type Raw = Record<string, unknown>;
@@ -218,7 +226,8 @@ export class MongoStore implements Store {
         updatedAt: now,
         logChannelId: targetLogChannel,
         dm: delivery(
-          settings.dmEnabled && ['ban', 'kick', 'warn', 'timeout'].includes(request.action),
+          settings.dmEnabled &&
+            ['ban', 'tempban', 'softban', 'kick', 'warn', 'timeout'].includes(request.action),
         ),
         staff: delivery(false),
       });
@@ -472,6 +481,27 @@ export class MongoStore implements Store {
     await this.cases.updateOne(
       { guildId, _id: id, 'dm.status': 'sending' },
       { $set: { 'dm.status': code ? 'failed' : 'sent', 'dm.errorCode': code } },
+    );
+  }
+  async claimExpired(now = new Date()) {
+    const raw = await this.cases
+      .findOneAndUpdate(
+        {
+          action: { $in: ['tempban', 'lock'] },
+          state: 'succeeded',
+          expiredProcessed: { $ne: true },
+          expiresAt: { $lte: now },
+        },
+        { $set: { expiredProcessed: true, updatedAt: now } },
+        { returnDocument: 'after', sort: { expiresAt: 1 } },
+      )
+      .lean();
+    return raw ? asCase(raw) : null;
+  }
+  async finishExpired(guildId: string, id: string) {
+    await this.cases.updateOne(
+      { guildId, _id: id },
+      { $set: { expiredProcessed: true, updatedAt: new Date() } },
     );
   }
 }

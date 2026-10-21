@@ -38,12 +38,12 @@ export function readEnvironment(env: NodeJS.ProcessEnv = process.env): Environme
     );
   return result.data;
 }
-export function parseDuration(value: string): number {
+export function parseDuration(value: string, maxDays = 28): number {
   const match = /^([1-9]\d*)(s|m|h|d)$/.exec(value);
   if (!match) throw new UserError('Use a positive duration such as 30m, 12h, or 7d.');
   const units: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
   const duration = Number(match[1]) * units[match[2]!]!;
-  if (!Number.isSafeInteger(duration) || duration > 28 * 86_400_000)
-    throw new UserError('Timeouts must be between 1 second and 28 days.');
+  if (!Number.isSafeInteger(duration) || duration > maxDays * 86_400_000)
+    throw new UserError(`Durations must be between 1 second and ${maxDays} days.`);
   return duration;
 }

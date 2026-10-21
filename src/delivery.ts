@@ -1,5 +1,5 @@
 import { ActionFailure } from './domain.js';
-import type { DiscordPort } from './moderation/service.js';
+import type { DiscordPort, ModerationService } from './moderation/service.js';
 import type { Store } from './storage/store.js';
 import { errorCode, logger } from './logger.js';
 export class DeliveryWorker {
@@ -8,6 +8,8 @@ export class DeliveryWorker {
   constructor(
     private readonly store: Store,
     private readonly discord: DiscordPort,
+    private readonly moderation?: ModerationService,
+    private readonly botId?: () => string,
   ) {}
   start() {
     this.timer = setInterval(() => void this.tick(), 1000);
@@ -32,6 +34,42 @@ export class DeliveryWorker {
             errorCode(error),
             error instanceof ActionFailure && error.certain,
           );
+        }
+      }
+      if (this.moderation && this.store.claimExpired) {
+        for (let count = 0; count < 5; count++) {
+          const expired = await this.store.claimExpired();
+          if (!expired) break;
+          const actorId = this.botId ? this.botId() : expired.actorId;
+          try {
+            if (expired.action === 'tempban') {
+              await this.moderation.execute({
+                guildId: expired.guildId,
+                targetId: expired.targetId,
+                actorId,
+                source: 'expiry',
+                action: 'unban',
+                reason: `Temporary ban expired (Case ${expired.caseNumber ? `#${expired.caseNumber}` : expired.id}).`,
+                requestKey: `expiry:${expired.id}`,
+              });
+            } else if (expired.action === 'lock' && expired.channelId) {
+              await this.moderation.execute({
+                guildId: expired.guildId,
+                targetId: expired.targetId,
+                actorId,
+                source: 'expiry',
+                action: 'unlock',
+                channelId: expired.channelId,
+                reason: `Timed channel lock expired (Case ${expired.caseNumber ? `#${expired.caseNumber}` : expired.id}).`,
+                requestKey: `expiry:${expired.id}`,
+              });
+            }
+          } catch (error) {
+            logger.warn(
+              { caseId: expired.id, code: errorCode(error) },
+              'Scheduled expiry reversal failed.',
+            );
+          }
         }
       }
     } catch {

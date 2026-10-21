@@ -69,7 +69,7 @@ async function main() {
         .handle(interaction)
         .catch(() => logger.error('Interaction error boundary caught a failure.'));
     });
-    worker = new DeliveryWorker(store, adapter);
+    worker = new DeliveryWorker(store, adapter, service, () => client.user!.id);
     client.once(Events.ClientReady, () => {
       worker!.start();
       logger.info('Bot ready.');
