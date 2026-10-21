@@ -26,11 +26,19 @@ export interface ManagedPreset {
   wordCategories: number[];
   keywords: string[];
 }
+export interface LogChannels {
+  modLog?: string | null;
+  alertLog?: string | null;
+  appealLog?: string | null;
+  reportLog?: string | null;
+}
 export interface GuildSettings {
   guildId: string;
   version: number;
   schemaVersion: 3;
   logChannelId: string | null;
+  channels?: LogChannels;
+  lastCaseNumber?: number;
   dmEnabled: boolean;
   accountAge: { enabled: boolean; days: number; action: 'alert' | 'kick' };
   invites: { enabled: boolean };
@@ -38,6 +46,12 @@ export interface GuildSettings {
   exemptChannels: string[];
   legacyMuteRoleId: string | null;
   automod: Record<Preset, ManagedPreset>;
+}
+export function resolveLogChannel(
+  settings: GuildSettings,
+  kind: keyof LogChannels = 'modLog',
+): string | null {
+  return settings.channels?.[kind] ?? settings.logChannelId;
 }
 export function defaultSettings(guildId: string): GuildSettings {
   const preset = (): ManagedPreset => ({
@@ -87,12 +101,13 @@ export interface Delivery {
 export interface CaseChange {
   actorId: string;
   at: Date;
-  kind: 'reason' | 'revoke' | 'resolve';
+  kind: 'reason' | 'revoke' | 'resolve' | 'appeal';
   value: string;
   previous: string;
 }
 export interface ModerationCase extends ActionRequest {
   id: string;
+  caseNumber?: number;
   state: CaseState;
   createdAt: Date;
   updatedAt: Date;

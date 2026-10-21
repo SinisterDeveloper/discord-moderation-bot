@@ -39,6 +39,9 @@ export function embedReply(embed: EmbedBuilder) {
 export function caseStatus(record: Pick<ModerationCase, 'state' | 'revoked'>) {
   return record.revoked ? 'Revoked' : stateLabel[record.state];
 }
+export function caseRef(record: Pick<ModerationCase, 'id' | 'caseNumber'>) {
+  return record.caseNumber ? `#${record.caseNumber} (${record.id})` : record.id;
+}
 export function caseEmbed(record: ModerationCase, details = false) {
   const tone: Tone = record.revoked
     ? 'info'
@@ -56,7 +59,7 @@ export function caseEmbed(record: ModerationCase, details = false) {
       { name: 'Member', value: person(record.targetId), inline: true },
       { name: 'Moderator', value: person(record.actorId), inline: true },
     )
-    .setFooter({ text: `Case ${record.id}` })
+    .setFooter({ text: `Case ${caseRef(record)}` })
     .setTimestamp(record.createdAt);
   if (record.durationMs)
     embed.addFields({
@@ -78,7 +81,7 @@ export function caseEmbed(record: ModerationCase, details = false) {
         .slice(-3)
         .map(
           (change) =>
-            `**${change.kind === 'reason' ? 'Reason updated' : change.kind === 'revoke' ? 'Warning revoked' : 'Outcome resolved'}** · ${person(change.actorId)}\n${escapeMarkdown(change.value.slice(0, 120))}`,
+            `**${change.kind === 'reason' ? 'Reason updated' : change.kind === 'revoke' ? 'Warning revoked' : change.kind === 'appeal' ? 'Appeal recorded' : 'Outcome resolved'}** · ${person(change.actorId)}\n${escapeMarkdown(change.value.slice(0, 120))}`,
         )
         .join('\n\n'),
     });
@@ -86,10 +89,17 @@ export function caseEmbed(record: ModerationCase, details = false) {
 }
 export function settingsEmbed(settings: GuildSettings) {
   const age = settings.accountAge;
+  const ch = settings.channels;
+  const extraChannels = [
+    ch?.alertLog ? `**Alert logs** <#${ch.alertLog}>` : null,
+    ch?.appealLog ? `**Appeal logs** <#${ch.appealLog}>` : null,
+    ch?.reportLog ? `**Report logs** <#${ch.reportLog}>` : null,
+  ].filter((x): x is string => x !== null);
   const embed = textEmbed(
     'Server settings',
     [
       `**Staff logs** ${settings.logChannelId ? `<#${settings.logChannelId}>` : 'Not set'}`,
+      ...extraChannels,
       `**Action DMs** ${settings.dmEnabled ? 'On' : 'Off'}`,
       `**Account age** ${age.enabled ? `${age.days} days · ${age.action === 'kick' ? 'Kick' : 'Alert'}` : 'Off'}`,
       `**Invite filter** ${settings.invites.enabled ? 'On' : 'Off'}`,

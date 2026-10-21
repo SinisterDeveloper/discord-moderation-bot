@@ -6,6 +6,7 @@ import {
   type PartialMessage,
 } from 'discord.js';
 import type { Capabilities } from '../config.js';
+import { resolveLogChannel } from '../domain.js';
 import type { ModerationService } from '../moderation/service.js';
 import type { Store } from '../storage/store.js';
 import { errorCode, logger } from '../logger.js';
@@ -28,10 +29,9 @@ export function attachPolicies(
     () => client.user!.id,
     async (guildId, text) => {
       const settings = await store.getSettings(guildId);
-      if (!settings.logChannelId) return;
-      const channel = await (
-        await client.guilds.fetch(guildId)
-      ).channels.fetch(settings.logChannelId);
+      const alertChannelId = resolveLogChannel(settings, 'alertLog');
+      if (!alertChannelId) return;
+      const channel = await (await client.guilds.fetch(guildId)).channels.fetch(alertChannelId);
       if (channel?.isSendable())
         await channel.send({
           embeds: [textEmbed('Policy check needs attention', text, 'warning')],

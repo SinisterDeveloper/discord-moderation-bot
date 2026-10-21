@@ -13,6 +13,9 @@ export interface CasePage {
   records: ModerationCase[];
   next: string | null;
 }
+export interface CaseListOptions {
+  actionFilter?: string;
+}
 export interface Store {
   available(): boolean;
   getSettings(guildId: string): Promise<GuildSettings>;
@@ -22,6 +25,7 @@ export interface Store {
     settings: GuildSettings,
   ): Promise<{ record: ModerationCase; created: boolean }>;
   getCase(guildId: string, id: string): Promise<ModerationCase | null>;
+  searchCases?(guildId: string, query: string, limit?: number): Promise<ModerationCase[]>;
   findRequest(guildId: string, requestKey: string): Promise<ModerationCase | null>;
   transition(
     guildId: string,
@@ -30,7 +34,12 @@ export interface Store {
     state: CaseState,
     code?: string | null,
   ): Promise<ModerationCase>;
-  listCases(guildId: string, targetId: string, cursor?: string): Promise<CasePage>;
+  listCases(
+    guildId: string,
+    targetId: string,
+    cursor?: string,
+    options?: CaseListOptions,
+  ): Promise<CasePage>;
   changeCase(
     guildId: string,
     id: string,
@@ -70,6 +79,8 @@ const settingsSchema = new Schema(
     version: { type: Number, required: true },
     schemaVersion: { type: Number, required: true, enum: [3] },
     logChannelId: { type: String, default: null },
+    channels: Schema.Types.Mixed,
+    lastCaseNumber: Number,
     dmEnabled: { type: Boolean, required: true },
     accountAge: { type: Schema.Types.Mixed, required: true },
     invites: { type: Schema.Types.Mixed, required: true },
@@ -83,6 +94,7 @@ const settingsSchema = new Schema(
 const caseSchema = new Schema(
   {
     guildId: { type: String, required: true },
+    caseNumber: Number,
     targetId: { type: String, required: true },
     actorId: { type: String, required: true },
     requestKey: { type: String, required: true },
@@ -112,6 +124,7 @@ const caseSchema = new Schema(
   { versionKey: false, collection: 'moderation_cases_v3', autoIndex: false },
 );
 caseSchema.index({ guildId: 1, requestKey: 1 }, { unique: true });
+caseSchema.index({ guildId: 1, caseNumber: -1 });
 caseSchema.index({ guildId: 1, targetId: 1, createdAt: -1, _id: -1 });
 caseSchema.index({ guildId: 1, state: 1 });
 caseSchema.index({ 'staff.status': 1, 'staff.nextAttemptAt': 1 });
@@ -158,7 +171,9 @@ export class MongoStore implements Store {
     return asSettings(raw);
   }
   async saveSettings(settings: GuildSettings) {
-    const next = { ...settings, version: settings.version + 1 };
+    const { lastCaseNumber: preservedCounter, ...rest } = settings;
+    void preservedCounter;
+    const next = { ...rest, version: settings.version + 1 };
     const raw = await this.settings
       .findOneAndUpdate(
         { guildId: settings.guildId, version: settings.version },
@@ -179,13 +194,29 @@ export class MongoStore implements Store {
       .lean();
     if (existing) return { record: asCase(existing), created: false };
     const now = new Date();
+    const counterDoc = await this.settings
+      .findOneAndUpdate(
+        { guildId: request.guildId },
+        {
+          $inc: { lastCaseNumber: 1 },
+          $setOnInsert: defaultSettings(request.guildId),
+        },
+        { upsert: true, returnDocument: 'after' },
+      )
+      .lean();
+    const caseNumber = (counterDoc as Raw | null)?.lastCaseNumber as number | undefined;
+    const isAlert = request.action === 'account_age_alert' || request.action === 'invite_delete';
+    const targetLogChannel = isAlert
+      ? (settings.channels?.alertLog ?? settings.channels?.modLog ?? settings.logChannelId)
+      : (settings.channels?.modLog ?? settings.logChannelId);
     try {
       const raw = await this.cases.create({
         ...request,
+        ...(caseNumber !== undefined ? { caseNumber } : {}),
         state: 'pending',
         createdAt: now,
         updatedAt: now,
-        logChannelId: settings.logChannelId,
+        logChannelId: targetLogChannel,
         dm: delivery(
           settings.dmEnabled && ['ban', 'kick', 'warn', 'timeout'].includes(request.action),
         ),
@@ -202,9 +233,47 @@ export class MongoStore implements Store {
     }
   }
   async getCase(guildId: string, id: string) {
-    if (!/^[a-f0-9]{24}$/.test(id)) return null;
-    const raw = await this.cases.findOne({ guildId, _id: id }).lean();
-    return raw ? asCase(raw) : null;
+    const trimmed = id.trim();
+    if (/^[a-f0-9]{24}$/i.test(trimmed)) {
+      const raw = await this.cases.findOne({ guildId, _id: trimmed.toLowerCase() }).lean();
+      return raw ? asCase(raw) : null;
+    }
+    const numMatch = /^#?([1-9]\d*)$/.exec(trimmed);
+    if (numMatch) {
+      const raw = await this.cases
+        .findOne({ guildId, caseNumber: Number(numMatch[1]) })
+        .sort({ createdAt: -1, _id: -1 })
+        .lean();
+      return raw ? asCase(raw) : null;
+    }
+    return null;
+  }
+  async searchCases(guildId: string, query: string, limit = 25): Promise<ModerationCase[]> {
+    const trimmed = query.trim();
+    const filter: Raw = { guildId };
+    if (trimmed) {
+      const numMatch = /^#?([1-9]\d*)$/.exec(trimmed);
+      if (numMatch && trimmed.length <= 10) {
+        filter.caseNumber = Number(numMatch[1]);
+      } else if (/^\d{17,20}$/.test(trimmed)) {
+        filter.targetId = trimmed;
+      } else if (/^[a-f0-9]{24}$/i.test(trimmed)) {
+        filter._id = trimmed.toLowerCase();
+      } else {
+        const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.$or = [
+          { reason: { $regex: escaped, $options: 'i' } },
+          { action: { $regex: escaped, $options: 'i' } },
+        ];
+      }
+    }
+    const docs = await this.cases
+      .find(filter)
+      .select('-legacy.raw -changes')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(Math.min(limit, 25))
+      .lean();
+    return docs.map(asCase);
   }
   async findRequest(guildId: string, requestKey: string) {
     const raw = await this.cases.findOne({ guildId, requestKey }).lean();
@@ -235,8 +304,22 @@ export class MongoStore implements Store {
     if (!raw) throw new UserError('Case state changed. Read the current result.', 'CONFLICT');
     return asCase(raw);
   }
-  async listCases(guildId: string, targetId: string, cursor?: string): Promise<CasePage> {
+  async listCases(
+    guildId: string,
+    targetId: string,
+    cursor?: string,
+    options?: CaseListOptions,
+  ): Promise<CasePage> {
     const filter: Raw = { guildId, targetId };
+    if (options?.actionFilter && options.actionFilter !== 'all') {
+      if (options.actionFilter === 'ban_kick') {
+        filter.action = { $in: ['ban', 'tempban', 'softban', 'unban', 'kick'] };
+      } else if (options.actionFilter === 'timeout') {
+        filter.action = { $in: ['timeout', 'untimeout', 'legacy_mute', 'legacy_unmute'] };
+      } else {
+        filter.action = options.actionFilter;
+      }
+    }
     if (cursor) {
       const anchor = await this.getCase(guildId, cursor);
       if (!anchor || anchor.targetId !== targetId) throw new UserError('Invalid page cursor.');
