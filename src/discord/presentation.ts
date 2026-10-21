@@ -76,6 +76,17 @@ export function caseEmbed(record: ModerationCase, details = false) {
       value: `${record.durationMs / 1000} seconds`,
       inline: true,
     });
+  if (record.channelId)
+    embed.addFields({
+      name: 'Channel',
+      value: `<#${record.channelId}>`,
+      inline: true,
+    });
+  if (details && record.appeal)
+    embed.addFields({
+      name: `Appeal (${record.appeal.status})`,
+      value: `${escapeMarkdown(record.appeal.text.slice(0, 200))}${record.appeal.reviewedBy ? `\nReviewed by ${person(record.appeal.reviewedBy)}` : ''}`,
+    });
   if (details || record.dm.status === 'failed' || record.staff.status === 'failed')
     embed.addFields({
       name: 'Delivery',
@@ -124,6 +135,10 @@ export function settingsEmbed(settings: GuildSettings) {
         : []),
       ...(settings.auditSync
         ? [`**Audit sync** ${settings.auditSync.enabled ? 'On' : 'Off'}`]
+        : []),
+      ...(settings.appeals ? [`**DM appeals** ${settings.appeals.enabled ? 'On' : 'Off'}`] : []),
+      ...(settings.reports
+        ? [`**Member reports** ${settings.reports.enabled ? 'On' : 'Off'}`]
         : []),
       ...(!settings.exemptRoles.length && !settings.exemptChannels.length
         ? ['**Exemptions** None']

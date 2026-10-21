@@ -47,7 +47,11 @@ export class DiscordAdapter implements DiscordPort {
     } catch (error) {
       if (!(error instanceof DiscordAPIError && error.code === 10007)) throw error;
     }
-    if (request.source === 'account_age' || request.source === 'invite_filter') {
+    if (
+      request.source === 'account_age' ||
+      request.source === 'raid_protection' ||
+      request.source === 'invite_filter'
+    ) {
       if (
         target?.user.bot ||
         target?.permissions.has(PermissionFlagsBits.Administrator) ||
@@ -63,6 +67,10 @@ export class DiscordAdapter implements DiscordPort {
           return 'noop';
         if (request.joinedAt && target.joinedAt?.toISOString() !== request.joinedAt) return 'noop';
         if ((request.action === 'kick') !== (settings.accountAge.action === 'kick')) return 'noop';
+      }
+      if (request.source === 'raid_protection') {
+        if (!target || !settings.antiRaid?.enabled) return 'noop';
+        if ((request.action === 'kick') !== (settings.antiRaid.action === 'kick')) return 'noop';
       }
       if (
         request.source === 'invite_filter' &&
@@ -235,10 +243,12 @@ export class DiscordAdapter implements DiscordPort {
       throw failure(error);
     }
   }
-  async sendDM(record: ModerationCase) {
+  async sendDM(record: ModerationCase, settings?: GuildSettings) {
     try {
       const user = await this.client.users.fetch(record.targetId);
-      const appealable = ['ban', 'tempban', 'kick', 'warn', 'timeout'].includes(record.action);
+      const appealable =
+        settings?.appeals?.enabled !== false &&
+        ['ban', 'tempban', 'kick', 'warn', 'timeout'].includes(record.action);
       const components = appealable
         ? [
             new ActionRowBuilder<ButtonBuilder>().addComponents(

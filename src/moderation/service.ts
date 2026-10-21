@@ -11,7 +11,7 @@ import { errorCode, logger } from '../logger.js';
 export interface DiscordPort {
   authorize(request: ActionRequest, settings: GuildSettings): Promise<'allowed' | 'noop'>;
   perform(request: ActionRequest, caseId: string, settings: GuildSettings): Promise<void>;
-  sendDM(record: ModerationCase): Promise<void>;
+  sendDM(record: ModerationCase, settings?: GuildSettings): Promise<void>;
   sendStaff(record: ModerationCase): Promise<string>;
 }
 export class ModerationService {
@@ -120,7 +120,7 @@ export class ModerationService {
       if (sendDM) {
         let dmError: string | null = null;
         try {
-          await this.discord.sendDM(finished);
+          await this.discord.sendDM(finished, settings);
         } catch (error) {
           dmError = errorCode(error);
         }

@@ -727,11 +727,17 @@ export class CommandRouter {
     }
     if (section === 'policies') {
       const age = settings.accountAge;
+      const esc = settings.escalations;
+      const raid = settings.antiRaid;
       const embed = textEmbed(
         'Control Center · Automated Policies',
         [
           `**Account-age gate** ${age.enabled ? `On (${age.days} days · ${age.action === 'kick' ? 'Kick' : 'Alert'})` : `Off (configured: ${age.days} days · ${age.action})`}`,
           `**External invite filter** ${settings.invites.enabled ? 'On' : 'Off'}`,
+          `**Warning escalations** ${esc?.enabled ? `On (${esc.rules.length} rules${esc.warnDecayDays ? ` · ${esc.warnDecayDays}d decay` : ''})` : 'Off'}`,
+          `**Anti-raid spike protection** ${raid?.enabled ? `On (${raid.joinThreshold} joins/${raid.windowSeconds}s · ${raid.action})` : 'Off'}`,
+          `**Appeals & Reports** DM appeals: ${settings.appeals?.enabled !== false ? 'On' : 'Off'} · Member reports: ${settings.reports?.enabled !== false ? 'On' : 'Off'}`,
+          `**Native AutoMod audit sync** ${settings.auditSync?.enabled ? 'On' : 'Off'}`,
           `**Runtime capabilities** Member events: ${this.capabilities.memberEvents ? 'On' : 'Off'} · Message filter: ${this.capabilities.messageFilter ? 'On' : 'Off'}`,
         ].join('\n'),
       );
@@ -894,6 +900,108 @@ export class CommandRouter {
           );
         },
       );
+      const editAntiRaidModal = this.makeModalButton(
+        interaction,
+        'Configure Anti-Raid',
+        'Anti-Raid Join-Spike Protection',
+        [
+          {
+            id: 'enabled',
+            label: 'Enabled (true or false)',
+            value: String(raid?.enabled ?? true),
+            maxLength: 5,
+          },
+          {
+            id: 'threshold',
+            label: 'Join threshold (2–100)',
+            value: String(raid?.joinThreshold ?? 10),
+            maxLength: 3,
+          },
+          {
+            id: 'windowSeconds',
+            label: 'Window in seconds (5–300)',
+            value: String(raid?.windowSeconds ?? 30),
+            maxLength: 3,
+          },
+          {
+            id: 'action',
+            label: 'Action (alert or kick)',
+            value: raid?.action ?? 'alert',
+            maxLength: 6,
+          },
+        ],
+        async (mod) => {
+          await this.requirePermission(mod, P.ManageGuild);
+          const enabled = mod.fields.getTextInputValue('enabled').trim().toLowerCase() === 'true';
+          const joinThreshold = Number(mod.fields.getTextInputValue('threshold').trim());
+          const windowSeconds = Number(mod.fields.getTextInputValue('windowSeconds').trim());
+          const action = mod.fields.getTextInputValue('action').trim().toLowerCase() as
+            'alert' | 'kick';
+          if (!Number.isInteger(joinThreshold) || joinThreshold < 2 || joinThreshold > 100)
+            throw new UserError('Join threshold must be between 2 and 100.');
+          if (!Number.isInteger(windowSeconds) || windowSeconds < 5 || windowSeconds > 300)
+            throw new UserError('Window seconds must be between 5 and 300.');
+          if (action !== 'alert' && action !== 'kick')
+            throw new UserError('Action must be alert or kick.');
+          if (enabled && !this.capabilities.memberEvents)
+            throw new UserError(
+              'Enable member events in runtime configuration and restart before enabling this policy.',
+            );
+          if (enabled && action === 'kick') await this.requirePermission(mod, P.KickMembers);
+          const current = await this.store.getSettings(guildId);
+          if (enabled && !current.logChannelId)
+            throw new UserError('Run /setup to choose a staff log channel first.');
+          current.antiRaid = { enabled, joinThreshold, windowSeconds, action };
+          await this.store.saveSettings(current);
+          return this.panel(
+            mod,
+            'policies',
+            `Anti-raid ${enabled ? 'enabled' : 'disabled'} (${joinThreshold} joins/${windowSeconds}s → ${action})`,
+          );
+        },
+      );
+      const toggleAppeals = this.makeButton(
+        interaction,
+        settings.appeals?.enabled === false ? 'Enable Appeals' : 'Disable Appeals',
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          const next = current.appeals?.enabled === false;
+          current.appeals = { enabled: next };
+          await this.store.saveSettings(current);
+          return this.panel(btn, 'policies', `DM appeals ${next ? 'enabled' : 'disabled'}`);
+        },
+        settings.appeals?.enabled !== false,
+        true,
+      );
+      const toggleReports = this.makeButton(
+        interaction,
+        settings.reports?.enabled === false ? 'Enable Reports' : 'Disable Reports',
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          const next = current.reports?.enabled === false;
+          current.reports = { enabled: next };
+          await this.store.saveSettings(current);
+          return this.panel(btn, 'policies', `Member reports ${next ? 'enabled' : 'disabled'}`);
+        },
+        settings.reports?.enabled !== false,
+        true,
+      );
+      const toggleAuditSync = this.makeButton(
+        interaction,
+        settings.auditSync?.enabled ? 'Disable Audit Sync' : 'Enable Audit Sync',
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          const next = !current.auditSync?.enabled;
+          current.auditSync = { enabled: next };
+          await this.store.saveSettings(current);
+          return this.panel(btn, 'policies', `AutoMod audit sync ${next ? 'enabled' : 'disabled'}`);
+        },
+        Boolean(settings.auditSync?.enabled),
+        true,
+      );
       return {
         ...embedReply(embed),
         components: [
@@ -904,6 +1012,12 @@ export class CommandRouter {
             editDaysModal,
             toggleInvites,
             editEscalationModal,
+          ),
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            editAntiRaidModal,
+            toggleAppeals,
+            toggleReports,
+            toggleAuditSync,
           ),
         ],
       };
@@ -918,35 +1032,66 @@ export class CommandRouter {
       [
         statusText,
         '',
-        `**Mentions draft** Limit: ${settings.automod.mentions.mentionLimit}`,
-        `**Words draft** Categories: ${settings.automod.words.wordCategories.join(', ')}`,
-        `**Keywords draft** ${settings.automod.keywords.keywords.length} keywords configured`,
+        `**Mentions draft** Limit: ${settings.automod.mentions.mentionLimit}${settings.automod.mentions.mentionRaidProtection ? ' · Raid protection: On' : ''}${settings.automod.mentions.timeoutSeconds ? ` · Timeout: ${settings.automod.mentions.timeoutSeconds}s` : ''}`,
+        `**Words draft** Categories: ${settings.automod.words.wordCategories.join(', ')}${settings.automod.words.allowList?.length ? ` · ${settings.automod.words.allowList.length} allow-listed` : ''}`,
+        `**Keywords draft** ${settings.automod.keywords.keywords.length} keywords · ${settings.automod.keywords.regexPatterns?.length ?? 0} regex · ${settings.automod.keywords.allowList?.length ?? 0} allow-listed${settings.automod.keywords.timeoutSeconds ? ` · Timeout: ${settings.automod.keywords.timeoutSeconds}s` : ''}`,
       ].join('\n'),
     );
     if (notice) embed.setAuthor({ name: notice });
     const editKeywordsBtn = this.makeModalButton(
       interaction,
-      'Edit Keywords (Modal)',
-      'Configure AutoMod Keywords',
+      'Edit Keywords & Regex (Modal)',
+      'Configure AutoMod Keywords & Regex',
       [
         {
           id: 'keywords',
-          label: 'One keyword or phrase per line (max 100)',
+          label: 'Keywords (one per line, max 100)',
           style: TextInputStyle.Paragraph,
           value: settings.automod.keywords.keywords.join('\n').slice(0, 4000),
           placeholder: 'scam-domain.example\nfree nitro',
+          required: false,
           maxLength: 4000,
+        },
+        {
+          id: 'regex',
+          label: 'Regex patterns (one per line, max 10)',
+          style: TextInputStyle.Paragraph,
+          value: (settings.automod.keywords.regexPatterns ?? []).join('\n').slice(0, 2600),
+          required: false,
+          maxLength: 2600,
+        },
+        {
+          id: 'allowList',
+          label: 'Allow list (comma or newline separated)',
+          style: TextInputStyle.Paragraph,
+          value: (settings.automod.keywords.allowList ?? []).join('\n').slice(0, 4000),
+          required: false,
+          maxLength: 4000,
+        },
+        {
+          id: 'timeoutSeconds',
+          label: 'AutoMod timeout seconds (0 or 60–2419200)',
+          value: String(settings.automod.keywords.timeoutSeconds ?? 0),
+          required: false,
+          maxLength: 8,
         },
       ],
       async (mod) => {
         await this.requirePermission(mod, P.ManageGuild);
         if (!this.native) throw new UserError('Native AutoMod is not available in this build.');
+        const kwRaw = mod.fields.getTextInputValue('keywords').trim();
+        const rxRaw = mod.fields.getTextInputValue('regex').trim();
+        const alRaw = mod.fields.getTextInputValue('allowList').trim();
+        const toRaw = mod.fields.getTextInputValue('timeoutSeconds').trim();
         await this.native.configure(guildId, 'keywords', {
-          keywords: mod.fields.getTextInputValue('keywords'),
+          keywords: kwRaw || null,
           categories: null,
           limit: null,
+          regex: rxRaw,
+          allowList: alRaw,
+          timeoutSeconds: toRaw ? Number(toRaw) : 0,
         });
-        return this.panel(mod, 'automod', 'Keywords preset draft saved');
+        return this.panel(mod, 'automod', 'Keywords & Regex preset draft saved');
       },
     );
     const editMentionsBtn = this.makeModalButton(
@@ -1549,6 +1694,38 @@ export class CommandRouter {
               joinThreshold: raid.joinThreshold,
               windowSeconds: raid.windowSeconds,
               action: raid.action,
+            };
+          }
+        }
+        if (parsed.escalations && typeof parsed.escalations === 'object') {
+          const esc = parsed.escalations as Record<string, unknown>;
+          if (typeof esc.enabled === 'boolean' && Array.isArray(esc.rules)) {
+            settings.escalations = {
+              enabled: esc.enabled,
+              warnDecayDays:
+                typeof esc.warnDecayDays === 'number' &&
+                esc.warnDecayDays >= 1 &&
+                esc.warnDecayDays <= 3650
+                  ? esc.warnDecayDays
+                  : null,
+              rules: (esc.rules as Record<string, unknown>[])
+                .filter(
+                  (r) =>
+                    typeof r.threshold === 'number' &&
+                    r.threshold >= 1 &&
+                    r.threshold <= 50 &&
+                    typeof r.windowDays === 'number' &&
+                    r.windowDays >= 1 &&
+                    r.windowDays <= 365 &&
+                    ['timeout', 'tempban', 'kick', 'ban'].includes(String(r.action)),
+                )
+                .slice(0, 10)
+                .map((r) => ({
+                  threshold: Number(r.threshold),
+                  windowDays: Number(r.windowDays),
+                  action: r.action as 'timeout' | 'tempban' | 'kick' | 'ban',
+                  ...(typeof r.durationMs === 'number' ? { durationMs: r.durationMs } : {}),
+                })),
             };
           }
         }
