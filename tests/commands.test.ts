@@ -121,6 +121,122 @@ describe('interaction handling', () => {
     });
     expect(f.store.saveSettings).not.toHaveBeenCalled();
   });
+  it('supports interactive /panel navigation, role select menus, and modals', async () => {
+    const f = fixture();
+    const client = {
+      guilds: {
+        fetch: async () => ({
+          ownerId: actorId,
+          members: { fetch: async () => ({ id: actorId, permissions: { has: () => true } }) },
+        }),
+      },
+    } as unknown as Client;
+    const router = new CommandRouter(client, f.store, new ModerationService(f.store, f.discord), {
+      memberEvents: true,
+      messageFilter: true,
+    });
+    const i = interaction('panel');
+    expect(await router.handle(i as unknown as ChatInputCommandInteraction)).toBe(true);
+    const overview = i.editReply.mock.calls[0]![0];
+    expect(overview.embeds[0].toJSON().title).toContain('Control Center');
+    const navCustomId = overview.components[0].toJSON().components[0].custom_id;
+    const selectExemption = {
+      guildId,
+      user: { id: actorId },
+      isChatInputCommand: () => false,
+      isButton: () => false,
+      isAnySelectMenu: () => true,
+      isStringSelectMenu: () => true,
+      inGuild: () => true,
+      customId: navCustomId,
+      values: ['exemptions'],
+      update: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+    };
+    expect(await router.handle(selectExemption as unknown as ChatInputCommandInteraction)).toBe(
+      true,
+    );
+    const exemptionsView = selectExemption.editReply.mock.calls[0]![0];
+    const roleSelectId = exemptionsView.components[1].toJSON().components[0].custom_id;
+    const roleSelect = {
+      ...selectExemption,
+      isStringSelectMenu: () => false,
+      isRoleSelectMenu: () => true,
+      customId: roleSelectId,
+      values: ['1108716196024561799'],
+      editReply: vi.fn().mockResolvedValue(undefined),
+    };
+    expect(await router.handle(roleSelect as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(f.store.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ exemptRoles: ['1108716196024561799'] }),
+    );
+  });
+  it('supports case autocomplete and modal reason amendments from /case view', async () => {
+    const f = fixture();
+    f.record.caseNumber = 7;
+    f.store.searchCases = vi.fn(async () => [f.record]);
+    const client = {
+      guilds: {
+        fetch: async () => ({
+          ownerId: actorId,
+          members: { fetch: async () => ({ id: actorId, permissions: { has: () => true } }) },
+        }),
+      },
+    } as unknown as Client;
+    const router = new CommandRouter(client, f.store, new ModerationService(f.store, f.discord), {
+      memberEvents: false,
+      messageFilter: false,
+    });
+    const auto = {
+      guildId,
+      isAutocomplete: () => true,
+      options: { getFocused: () => '#7' },
+      respond: vi.fn().mockResolvedValue(undefined),
+    };
+    await router.handle(auto as unknown as ChatInputCommandInteraction);
+    expect(auto.respond).toHaveBeenCalledWith([
+      expect.objectContaining({ value: '7', name: expect.stringContaining('#7') }),
+    ]);
+
+    const viewCmd = {
+      ...interaction('case'),
+      options: {
+        getSubcommand: () => 'view',
+        getString: () => '#7',
+      },
+    };
+    expect(await router.handle(viewCmd as unknown as ChatInputCommandInteraction)).toBe(true);
+    const viewReply = viewCmd.editReply.mock.calls[0]![0];
+    const amendBtnId = viewReply.components[0].toJSON().components[0].custom_id;
+    const showModal = vi.fn().mockResolvedValue(undefined);
+    const btnClick = {
+      guildId,
+      user: { id: actorId },
+      isButton: () => true,
+      inGuild: () => true,
+      customId: amendBtnId,
+      showModal,
+    };
+    expect(await router.handle(btnClick as unknown as ButtonInteraction)).toBe(true);
+    expect(showModal).toHaveBeenCalledOnce();
+    const modalPayload = showModal.mock.calls[0]![0].toJSON();
+    const modalSubmit = {
+      guildId,
+      user: { id: actorId },
+      isModalSubmit: () => true,
+      inGuild: () => true,
+      customId: modalPayload.custom_id,
+      fields: { getTextInputValue: () => 'Modal updated reason' },
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+    };
+    expect(await router.handle(modalSubmit as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(f.store.changeCase).toHaveBeenCalledWith(
+      guildId,
+      f.record.id,
+      expect.objectContaining({ kind: 'reason', value: 'Modal updated reason' }),
+    );
+  });
 });
 afterEach(() => vi.useRealTimers());
 describe('commands and permissions', () => {

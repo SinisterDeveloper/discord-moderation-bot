@@ -1,5 +1,7 @@
 import {
+  ApplicationCommandType,
   ApplicationIntegrationType,
+  ContextMenuCommandBuilder,
   InteractionContextType,
   PermissionFlagsBits as P,
   SlashCommandBuilder,
@@ -10,6 +12,19 @@ const base = (name: string, description: string, permission?: bigint) => {
   const command = new SlashCommandBuilder()
     .setName(name)
     .setDescription(description)
+    .setContexts(InteractionContextType.Guild)
+    .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
+  if (permission) command.setDefaultMemberPermissions(permission);
+  return command;
+};
+const contextMenu = (
+  name: string,
+  type: ApplicationCommandType.User | ApplicationCommandType.Message,
+  permission?: bigint,
+) => {
+  const command = new ContextMenuCommandBuilder()
+    .setName(name)
+    .setType(type)
     .setContexts(InteractionContextType.Guild)
     .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
   if (permission) command.setDefaultMemberPermissions(permission);
@@ -26,7 +41,13 @@ const reason = (command: SlashCommandSubcommandBuilder) =>
   );
 const id = (command: SlashCommandSubcommandBuilder) =>
   command.addStringOption((o) =>
-    o.setName('id').setDescription('Case ID.').setRequired(true).setMinLength(24).setMaxLength(24),
+    o
+      .setName('id')
+      .setDescription('Case #number (e.g. #1) or 24-character Case ID.')
+      .setRequired(true)
+      .setMinLength(1)
+      .setMaxLength(32)
+      .setAutocomplete(true),
   );
 const presets = [
   { name: 'Mention spam', value: 'mentions' },
@@ -45,6 +66,11 @@ const commands = [
   base('ping', 'Check the bot connection.'),
   base('help', 'Show commands and setup guidance.'),
   base('doctor', 'Check permissions, policies, and unresolved cases.', P.ManageGuild),
+  base(
+    'panel',
+    'Open the interactive server configuration and policy control center.',
+    P.ManageGuild,
+  ),
   base('setup', 'Set the staff log channel.', P.ManageGuild).addChannelOption((o) =>
     o
       .setName('log-channel')
@@ -170,13 +196,24 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName('log-channel')
-        .setDescription('Set the staff log channel.')
+        .setDescription('Set a staff log channel.')
         .addChannelOption((o) =>
           o
             .setName('channel')
             .setDescription('Staff channel.')
             .addChannelTypes(ChannelType.GuildText)
             .setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('type')
+            .setDescription('Log stream to route to this channel.')
+            .setChoices(
+              { name: 'Default / Moderation logs', value: 'modLog' },
+              { name: 'Policy & AutoMod alerts', value: 'alertLog' },
+              { name: 'Member appeals', value: 'appealLog' },
+              { name: 'Member reports', value: 'reportLog' },
+            ),
         ),
     )
     .addSubcommand((s) =>
@@ -233,5 +270,7 @@ const commands = [
       preset(s.setName('apply').setDescription('Preview and enable a managed rule.')),
     )
     .addSubcommand((s) => preset(s.setName('disable').setDescription('Disable an owned rule.'))),
+  contextMenu('Inspect & Moderate', ApplicationCommandType.User, P.ModerateMembers),
+  contextMenu('Moderate Message', ApplicationCommandType.Message, P.ModerateMembers),
 ];
 export const commandDefinitions = commands.map((command) => command.toJSON());

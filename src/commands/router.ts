@@ -2,15 +2,27 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelSelectMenuBuilder,
+  ChannelType,
   EmbedBuilder,
   MessageFlags,
+  ModalBuilder,
   PermissionFlagsBits as P,
+  RoleSelectMenuBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   escapeMarkdown,
+  type AnySelectMenuInteraction,
+  type AutocompleteInteraction,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Client,
   type Interaction,
   type InteractionEditReplyOptions,
+  type MessageContextMenuCommandInteraction,
+  type ModalSubmitInteraction,
+  type UserContextMenuCommandInteraction,
 } from 'discord.js';
 import { parseDuration, parseReason, snowflake, type Capabilities } from '../config.js';
 import {
@@ -18,11 +30,13 @@ import {
   type Action,
   type ActionRequest,
   type GuildSettings,
+  type LogChannels,
   type Preset,
 } from '../domain.js';
 import {
   actionLabel,
   caseEmbed,
+  caseRef,
   caseStatus,
   embedReply,
   person,
@@ -48,9 +62,21 @@ export interface NativeCommands {
   apply(guildId: string, preset: Preset, enabled: boolean, fingerprint: string): Promise<string>;
 }
 type Reply = InteractionEditReplyOptions;
-type Callback = (button: ButtonInteraction) => Promise<Reply>;
+type Interactive =
+  | ChatInputCommandInteraction
+  | ButtonInteraction
+  | AnySelectMenuInteraction
+  | ModalSubmitInteraction
+  | UserContextMenuCommandInteraction
+  | MessageContextMenuCommandInteraction;
+type Callback = (interaction: ButtonInteraction | AnySelectMenuInteraction) => Promise<Reply>;
+type ModalFactory = (interaction: ButtonInteraction) => Promise<ModalBuilder>;
+type ModalCallback = (interaction: ModalSubmitInteraction) => Promise<Reply>;
+type PanelSection = 'overview' | 'exemptions' | 'policies' | 'automod';
 export class CommandRouter {
   private sessions = new Sessions<Callback>();
+  private modalTriggers = new Sessions<ModalFactory>();
+  private modalSubmits = new Sessions<ModalCallback>();
   private lastUse = new Map<string, number>();
   constructor(
     private readonly client: Client,
@@ -59,62 +85,177 @@ export class CommandRouter {
     private readonly capabilities: Capabilities,
     private readonly native?: NativeCommands,
   ) {}
-  private async requirePermission(
-    interaction: ChatInputCommandInteraction | ButtonInteraction,
-    permission: bigint,
-  ) {
+  private async requirePermission(interaction: Interactive, permission: bigint) {
     if (!interaction.guildId) throw new UserError('Use this command in a server.');
     const guild = await this.client.guilds.fetch(interaction.guildId);
     const member = await guild.members.fetch({ user: interaction.user.id, force: true });
     if (member.id !== guild.ownerId && !member.permissions.has(permission))
       throw new UserError('You do not have permission for this command.');
   }
-  private button(
-    interaction: ChatInputCommandInteraction | ButtonInteraction,
+  private makeButton(
+    interaction: Interactive,
     label: string,
     callback: Callback,
     danger = false,
+    keep = false,
   ) {
-    const id = this.sessions.create(interaction.user.id, interaction.guildId!, callback);
+    const id = this.sessions.create(interaction.user.id, interaction.guildId!, callback, keep);
+    return new ButtonBuilder()
+      .setCustomId(`v3:${id}`)
+      .setLabel(label)
+      .setStyle(danger ? ButtonStyle.Danger : ButtonStyle.Primary);
+  }
+  private button(
+    interaction: Interactive,
+    label: string,
+    callback: Callback,
+    danger = false,
+    keep = false,
+  ) {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`v3:${id}`)
-        .setLabel(label)
-        .setStyle(danger ? ButtonStyle.Danger : ButtonStyle.Primary),
+      this.makeButton(interaction, label, callback, danger, keep),
     );
   }
-  async handle(interaction: Interaction) {
-    if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
-    if (!interaction.inGuild()) {
-      await interaction.reply({
-        ...embedReply(textEmbed('Server command', 'Use this command in a server.', 'warning')),
-        flags: MessageFlags.Ephemeral,
-      });
+  private makeModalButton(
+    interaction: Interactive,
+    label: string,
+    title: string,
+    fields: {
+      id: string;
+      label: string;
+      style?: TextInputStyle;
+      value?: string;
+      placeholder?: string;
+      required?: boolean;
+      maxLength?: number;
+    }[],
+    onSubmit: ModalCallback,
+    danger = false,
+  ) {
+    const triggerId = this.modalTriggers.create(
+      interaction.user.id,
+      interaction.guildId!,
+      async (btn) => {
+        const submitId = this.modalSubmits.create(btn.user.id, btn.guildId!, onSubmit);
+        const modal = new ModalBuilder().setCustomId(`v3s:${submitId}`).setTitle(title);
+        for (const f of fields) {
+          const input = new TextInputBuilder()
+            .setCustomId(f.id)
+            .setLabel(f.label)
+            .setStyle(f.style ?? TextInputStyle.Short)
+            .setRequired(f.required ?? true)
+            .setMaxLength(f.maxLength ?? 400);
+          if (f.value) input.setValue(f.value);
+          if (f.placeholder) input.setPlaceholder(f.placeholder);
+          modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+        }
+        return modal;
+      },
+      true,
+    );
+    return new ButtonBuilder()
+      .setCustomId(`v3m:${triggerId}`)
+      .setLabel(label)
+      .setStyle(danger ? ButtonStyle.Danger : ButtonStyle.Secondary);
+  }
+  private async handleAutocomplete(interaction: AutocompleteInteraction) {
+    if (!interaction.guildId || !this.store.available()) {
+      await interaction.respond([]).catch(() => {});
       return;
     }
     try {
-      if (interaction.isButton()) {
-        if (!interaction.customId.startsWith('v3:')) return;
-        const callback = this.sessions.take(
-          interaction.customId.slice(3),
-          interaction.user.id,
-          interaction.guildId,
-        );
-        await interaction.update(embedReply(textEmbed('Checking request', 'Please wait.')));
-        await interaction.editReply(await callback(interaction));
+      const focused = interaction.options.getFocused();
+      const records = this.store.searchCases
+        ? await this.store.searchCases(interaction.guildId, focused, 25)
+        : [];
+      await interaction.respond(
+        records.slice(0, 25).map((r) => {
+          const ref = r.caseNumber ? `#${r.caseNumber}` : r.id.slice(0, 8);
+          const summary = `${ref} · ${actionLabel[r.action]} · ${r.targetId} — ${r.reason}`.slice(
+            0,
+            100,
+          );
+          return {
+            name: summary,
+            value: r.caseNumber ? String(r.caseNumber) : r.id,
+          };
+        }),
+      );
+    } catch {
+      await interaction.respond([]).catch(() => {});
+    }
+  }
+  async handle(interaction: Interaction) {
+    if (interaction.isAutocomplete?.()) {
+      await this.handleAutocomplete(interaction);
+      return true;
+    }
+    const isCmd = interaction.isChatInputCommand?.() ?? false;
+    const isBtn = interaction.isButton?.() ?? false;
+    const isSelect = interaction.isAnySelectMenu?.() ?? false;
+    const isModal = interaction.isModalSubmit?.() ?? false;
+    const isUserCtx = interaction.isUserContextMenuCommand?.() ?? false;
+    const isMsgCtx = interaction.isMessageContextMenuCommand?.() ?? false;
+    if (!isCmd && !isBtn && !isSelect && !isModal && !isUserCtx && !isMsgCtx) return;
+    const active = interaction as Interactive;
+    if (!active.inGuild()) {
+      if ('reply' in active)
+        await active.reply({
+          ...embedReply(textEmbed('Server command', 'Use this command in a server.', 'warning')),
+          flags: MessageFlags.Ephemeral,
+        });
+      return;
+    }
+    try {
+      if (isBtn) {
+        const btn = interaction as ButtonInteraction;
+        if (btn.customId.startsWith('v3m:')) {
+          const buildModal = this.modalTriggers.take(
+            btn.customId.slice(4),
+            btn.user.id,
+            btn.guildId!,
+          );
+          await btn.showModal(await buildModal(btn));
+          return true;
+        }
+        if (!btn.customId.startsWith('v3:')) return;
+        const callback = this.sessions.take(btn.customId.slice(3), btn.user.id, btn.guildId!);
+        await btn.update(embedReply(textEmbed('Checking request', 'Please wait.')));
+        await btn.editReply(await callback(btn));
+      } else if (isSelect) {
+        const sel = interaction as AnySelectMenuInteraction;
+        if (!sel.customId.startsWith('v3:')) return;
+        const callback = this.sessions.take(sel.customId.slice(3), sel.user.id, sel.guildId!);
+        await sel.update(embedReply(textEmbed('Updating view', 'Please wait.')));
+        await sel.editReply(await callback(sel));
+      } else if (isModal) {
+        const mod = interaction as ModalSubmitInteraction;
+        if (!mod.customId.startsWith('v3s:')) return;
+        const callback = this.modalSubmits.take(mod.customId.slice(4), mod.user.id, mod.guildId!);
+        await mod.deferReply({ flags: MessageFlags.Ephemeral });
+        await mod.editReply(await callback(mod));
+      } else if (isUserCtx) {
+        const ctx = interaction as UserContextMenuCommandInteraction;
+        await ctx.deferReply({ flags: MessageFlags.Ephemeral });
+        await ctx.editReply(await this.userContext(ctx));
+      } else if (isMsgCtx) {
+        const ctx = interaction as MessageContextMenuCommandInteraction;
+        await ctx.deferReply({ flags: MessageFlags.Ephemeral });
+        await ctx.editReply(await this.messageContext(ctx));
       } else {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const key = `${interaction.guildId}:${interaction.user.id}:${interaction.commandName}`;
+        const chat = interaction as ChatInputCommandInteraction;
+        await chat.deferReply({ flags: MessageFlags.Ephemeral });
+        const key = `${chat.guildId}:${chat.user.id}:${chat.commandName}`;
         if ((this.lastUse.get(key) ?? 0) > Date.now())
           throw new UserError('Wait one second before repeating this command.');
         if (this.lastUse.size >= 5000) this.lastUse.delete(this.lastUse.keys().next().value!);
         this.lastUse.set(key, Date.now() + 1000);
-        await interaction.editReply(await this.chat(interaction));
+        await chat.editReply(await this.chat(chat));
       }
       return true;
     } catch (error) {
       const ref = errorCode(error);
-      logger.warn({ code: ref, guildId: interaction.guildId }, 'Command failed.');
+      logger.warn({ code: ref, guildId: active.guildId }, 'Command failed.');
       const content =
         error instanceof UserError
           ? error.message
@@ -126,9 +267,8 @@ export class CommandRouter {
           error instanceof UserError ? 'warning' : 'error',
         ),
       );
-      if (interaction.deferred || interaction.replied)
-        await interaction.editReply(response).catch(() => {});
-      else await interaction.reply({ ...response, flags: MessageFlags.Ephemeral }).catch(() => {});
+      if (active.deferred || active.replied) await active.editReply(response).catch(() => {});
+      else await active.reply({ ...response, flags: MessageFlags.Ephemeral }).catch(() => {});
       return false;
     }
   }
@@ -147,38 +287,100 @@ export class CommandRouter {
     return embedReply(embed);
   }
   private async history(
-    interaction: ChatInputCommandInteraction | ButtonInteraction,
+    interaction: Interactive,
     target: string,
     cursor?: string,
+    prevCursors: (string | undefined)[] = [],
+    actionFilter = 'all',
   ): Promise<Reply> {
     await this.requirePermission(interaction, P.ModerateMembers);
-    const page = await this.store.listCases(interaction.guildId!, target, cursor);
+    const page = await this.store.listCases(interaction.guildId!, target, cursor, {
+      actionFilter,
+    });
+    const filterSelectId = this.sessions.create(
+      interaction.user.id,
+      interaction.guildId!,
+      async (sel) => {
+        const chosen = sel.isStringSelectMenu() ? (sel.values[0] ?? 'all') : 'all';
+        return this.history(sel, target, undefined, [], chosen);
+      },
+      true,
+    );
+    const filterRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`v3:${filterSelectId}`)
+        .setPlaceholder('Filter by action type')
+        .addOptions(
+          { label: 'All actions', value: 'all', default: actionFilter === 'all' },
+          { label: 'Warnings', value: 'warn', default: actionFilter === 'warn' },
+          { label: 'Timeouts & Mutes', value: 'timeout', default: actionFilter === 'timeout' },
+          { label: 'Bans & Kicks', value: 'ban_kick', default: actionFilter === 'ban_kick' },
+          { label: 'Staff Notes', value: 'note', default: actionFilter === 'note' },
+        ),
+    );
     if (!page.records.length)
-      return embedReply(textEmbed('Case history', `No cases found for ${person(target)}.`));
+      return {
+        ...embedReply(
+          textEmbed(
+            'Case history',
+            `No matching cases found for ${person(target)}${actionFilter !== 'all' ? ` (filter: ${actionFilter})` : ''}.`,
+          ),
+        ),
+        components: actionFilter !== 'all' ? [filterRow] : [],
+      };
     const embed = new EmbedBuilder()
       .setTitle('Case history')
       .setDescription(person(target))
       .setColor(0x5865f2)
       .addFields(
         page.records.map((record) => ({
-          name: `${actionLabel[record.action]} · ${caseStatus(record)}`,
+          name: `${record.caseNumber ? `#${record.caseNumber} · ` : ''}${actionLabel[record.action]} · ${caseStatus(record)}`,
           value: `\`${record.id}\` · <t:${Math.floor(record.createdAt.getTime() / 1000)}:d>\n${escapeMarkdown(record.reason.slice(0, 100))}${record.reason.length > 100 ? '…' : ''}`,
         })),
       )
-      .setFooter({ text: 'Newest first · Use /case view for details' });
+      .setFooter({
+        text: `Page ${prevCursors.length + 1} · Newest first · Use /case view for details`,
+      });
     const cursorNext = page.next;
+    const navButtons: ButtonBuilder[] = [];
+    if (prevCursors.length > 0) {
+      const prevCursor = prevCursors[prevCursors.length - 1];
+      const nextStack = prevCursors.slice(0, -1);
+      navButtons.push(
+        this.makeButton(
+          interaction,
+          'Previous page',
+          (btn) => this.history(btn, target, prevCursor, nextStack, actionFilter),
+          false,
+          true,
+        ),
+      );
+    }
+    if (cursorNext) {
+      navButtons.push(
+        this.makeButton(
+          interaction,
+          'Next page',
+          (btn) => this.history(btn, target, cursorNext, [...prevCursors, cursor], actionFilter),
+          false,
+          true,
+        ),
+      );
+    }
+    const components: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [];
+    if (navButtons.length)
+      components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...navButtons));
+    components.push(filterRow);
     return {
       ...embedReply(embed),
-      components: cursorNext
-        ? [
-            this.button(interaction, 'Next page', (button) =>
-              this.history(button, target, cursorNext),
-            ),
-          ]
-        : [],
+      components,
     };
   }
-  private async setLogChannel(settings: GuildSettings, channelId: string) {
+  private async setLogChannel(
+    settings: GuildSettings,
+    channelId: string,
+    kind: keyof LogChannels = 'modLog',
+  ) {
     const guild = await this.client.guilds.fetch(settings.guildId);
     const channel = await guild.channels.fetch(channelId);
     const bot = await guild.members.fetchMe({ force: true });
@@ -189,7 +391,623 @@ export class CommandRouter {
       throw new UserError(
         'Choose a text channel where the bot can view messages, send messages, and embed links.',
       );
-    settings.logChannelId = channelId;
+    if (kind === 'modLog') {
+      settings.logChannelId = channelId;
+      if (settings.channels?.modLog !== undefined) {
+        settings.channels = { ...settings.channels, modLog: channelId };
+      }
+    } else {
+      settings.channels = { ...settings.channels, [kind]: channelId };
+      if (!settings.logChannelId) settings.logChannelId = channelId;
+    }
+  }
+  private async panel(
+    interaction: Interactive,
+    section: PanelSection = 'overview',
+    notice?: string,
+  ): Promise<Reply> {
+    await this.requirePermission(interaction, P.ManageGuild);
+    const guildId = interaction.guildId!;
+    const settings = await this.store.getSettings(guildId);
+    const navId = this.sessions.create(
+      interaction.user.id,
+      guildId,
+      async (sel) => {
+        const chosen = (sel.isStringSelectMenu() ? sel.values[0] : 'overview') as PanelSection;
+        return this.panel(sel, chosen);
+      },
+      true,
+    );
+    const navRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`v3:${navId}`)
+        .setPlaceholder('Choose control center section')
+        .addOptions(
+          {
+            label: 'Overview & Log Channels',
+            description: 'Staff log channels and DM notification settings',
+            value: 'overview',
+            default: section === 'overview',
+          },
+          {
+            label: 'Role & Channel Exemptions',
+            description: 'Multi-select roles and channels exempt from policies',
+            value: 'exemptions',
+            default: section === 'exemptions',
+          },
+          {
+            label: 'Automated Policies',
+            description: 'Account-age gate and external invite filter',
+            value: 'policies',
+            default: section === 'policies',
+          },
+          {
+            label: 'Native AutoMod Presets',
+            description: 'Configure and apply Discord AutoMod rules via Modals',
+            value: 'automod',
+            default: section === 'automod',
+          },
+        ),
+    );
+    if (section === 'overview') {
+      const embed = settingsEmbed(settings).setTitle('Control Center · Overview & Channels');
+      if (notice) embed.setAuthor({ name: notice });
+      const channelSelectId = this.sessions.create(
+        interaction.user.id,
+        guildId,
+        async (sel) => {
+          await this.requirePermission(sel, P.ManageGuild);
+          const chosen = sel.isChannelSelectMenu() ? sel.values[0] : undefined;
+          if (!chosen) return this.panel(sel, 'overview');
+          const current = await this.store.getSettings(guildId);
+          await this.setLogChannel(current, chosen, 'modLog');
+          await this.store.saveSettings(current);
+          return this.panel(sel, 'overview', 'Staff log channel updated');
+        },
+        true,
+      );
+      const channelRow = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(`v3:${channelSelectId}`)
+          .setPlaceholder('Select primary staff log channel')
+          .setChannelTypes(ChannelType.GuildText)
+          .setMinValues(1)
+          .setMaxValues(1),
+      );
+      const dmButton = this.makeButton(
+        interaction,
+        settings.dmEnabled ? 'Disable Action DMs' : 'Enable Action DMs',
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          current.dmEnabled = !current.dmEnabled;
+          await this.store.saveSettings(current);
+          return this.panel(
+            btn,
+            'overview',
+            `Action DMs ${current.dmEnabled ? 'enabled' : 'disabled'}`,
+          );
+        },
+        settings.dmEnabled,
+        true,
+      );
+      return {
+        ...embedReply(embed),
+        components: [
+          navRow,
+          channelRow,
+          new ActionRowBuilder<ButtonBuilder>().addComponents(dmButton),
+        ],
+      };
+    }
+    if (section === 'exemptions') {
+      const embed = settingsEmbed(settings).setTitle('Control Center · Policy Exemptions');
+      if (notice) embed.setAuthor({ name: notice });
+      const roleSelectId = this.sessions.create(
+        interaction.user.id,
+        guildId,
+        async (sel) => {
+          await this.requirePermission(sel, P.ManageGuild);
+          const values = sel.isRoleSelectMenu() ? sel.values.filter((id) => id !== guildId) : [];
+          const current = await this.store.getSettings(guildId);
+          current.exemptRoles = [...new Set(values)].slice(0, 20);
+          await this.store.saveSettings(current);
+          return this.panel(sel, 'exemptions', 'Exempt roles updated');
+        },
+        true,
+      );
+      const chanSelectId = this.sessions.create(
+        interaction.user.id,
+        guildId,
+        async (sel) => {
+          await this.requirePermission(sel, P.ManageGuild);
+          const values = sel.isChannelSelectMenu() ? sel.values : [];
+          const current = await this.store.getSettings(guildId);
+          current.exemptChannels = [...new Set(values)].slice(0, 25);
+          await this.store.saveSettings(current);
+          return this.panel(sel, 'exemptions', 'Exempt channels updated');
+        },
+        true,
+      );
+      const roleRow = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+        new RoleSelectMenuBuilder()
+          .setCustomId(`v3:${roleSelectId}`)
+          .setPlaceholder('Select exempt roles (replaces current list)')
+          .setMinValues(0)
+          .setMaxValues(20),
+      );
+      const chanRow = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(`v3:${chanSelectId}`)
+          .setPlaceholder('Select exempt channels (replaces current list)')
+          .setMinValues(0)
+          .setMaxValues(25),
+      );
+      return {
+        ...embedReply(embed),
+        components: [navRow, roleRow, chanRow],
+      };
+    }
+    if (section === 'policies') {
+      const age = settings.accountAge;
+      const embed = textEmbed(
+        'Control Center · Automated Policies',
+        [
+          `**Account-age gate** ${age.enabled ? `On (${age.days} days · ${age.action === 'kick' ? 'Kick' : 'Alert'})` : `Off (configured: ${age.days} days · ${age.action})`}`,
+          `**External invite filter** ${settings.invites.enabled ? 'On' : 'Off'}`,
+          `**Runtime capabilities** Member events: ${this.capabilities.memberEvents ? 'On' : 'Off'} · Message filter: ${this.capabilities.messageFilter ? 'On' : 'Off'}`,
+        ].join('\n'),
+      );
+      if (notice) embed.setAuthor({ name: notice });
+      const toggleAge = this.makeButton(
+        interaction,
+        age.enabled ? 'Disable Account Age' : 'Enable Account Age',
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          const nextEnabled = !current.accountAge.enabled;
+          if (nextEnabled && !this.capabilities.memberEvents)
+            throw new UserError(
+              'Enable member events in runtime configuration and restart before enabling this policy.',
+            );
+          if (nextEnabled && !current.logChannelId)
+            throw new UserError('Run /setup to choose a staff log channel first.');
+          if (nextEnabled && current.accountAge.action === 'kick')
+            await this.requirePermission(btn, P.KickMembers);
+          current.accountAge.enabled = nextEnabled;
+          await this.store.saveSettings(current);
+          return this.panel(
+            btn,
+            'policies',
+            `Account-age gate ${nextEnabled ? 'enabled' : 'disabled'}`,
+          );
+        },
+        age.enabled,
+        true,
+      );
+      const toggleMode = this.makeButton(
+        interaction,
+        `Mode: ${age.action === 'kick' ? 'Switch to Alert' : 'Switch to Kick'}`,
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          const nextAction = current.accountAge.action === 'kick' ? 'alert' : 'kick';
+          if (nextAction === 'kick') await this.requirePermission(btn, P.KickMembers);
+          current.accountAge.action = nextAction;
+          await this.store.saveSettings(current);
+          return this.panel(btn, 'policies', `Account-age action set to ${nextAction}`);
+        },
+        false,
+        true,
+      );
+      const editDaysModal = this.makeModalButton(
+        interaction,
+        'Set Age Threshold (Days)',
+        'Account-Age Threshold',
+        [
+          {
+            id: 'days',
+            label: 'Minimum account age in whole days (1–3650)',
+            value: String(age.days),
+            maxLength: 4,
+          },
+        ],
+        async (mod) => {
+          await this.requirePermission(mod, P.ManageGuild);
+          const days = Number(mod.fields.getTextInputValue('days').trim());
+          if (!Number.isInteger(days) || days < 1 || days > 3650)
+            throw new UserError('Days must be a whole number from 1 to 3650.');
+          const current = await this.store.getSettings(guildId);
+          current.accountAge.days = days;
+          await this.store.saveSettings(current);
+          return this.panel(mod, 'policies', `Account-age threshold set to ${days} days`);
+        },
+      );
+      const toggleInvites = this.makeButton(
+        interaction,
+        settings.invites.enabled ? 'Disable Invite Filter' : 'Enable Invite Filter',
+        async (btn) => {
+          await this.requirePermission(btn, P.ManageGuild);
+          const current = await this.store.getSettings(guildId);
+          const nextEnabled = !current.invites.enabled;
+          if (nextEnabled && !this.capabilities.messageFilter)
+            throw new UserError(
+              'Enable message filtering in runtime configuration and restart before enabling this policy.',
+            );
+          if (nextEnabled && !current.logChannelId)
+            throw new UserError('Run /setup to choose a staff log channel first.');
+          current.invites.enabled = nextEnabled;
+          await this.store.saveSettings(current);
+          return this.panel(
+            btn,
+            'policies',
+            `Invite filter ${nextEnabled ? 'enabled' : 'disabled'}`,
+          );
+        },
+        settings.invites.enabled,
+        true,
+      );
+      return {
+        ...embedReply(embed),
+        components: [
+          navRow,
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            toggleAge,
+            toggleMode,
+            editDaysModal,
+            toggleInvites,
+          ),
+        ],
+      };
+    }
+    const statusText = this.native
+      ? await this.native
+          .status(guildId)
+          .catch(() => 'AutoMod status unavailable (check Manage Server permission).')
+      : 'Native AutoMod is not available in this build.';
+    const embed = textEmbed(
+      'Control Center · Native AutoMod Presets',
+      [
+        statusText,
+        '',
+        `**Mentions draft** Limit: ${settings.automod.mentions.mentionLimit}`,
+        `**Words draft** Categories: ${settings.automod.words.wordCategories.join(', ')}`,
+        `**Keywords draft** ${settings.automod.keywords.keywords.length} keywords configured`,
+      ].join('\n'),
+    );
+    if (notice) embed.setAuthor({ name: notice });
+    const editKeywordsBtn = this.makeModalButton(
+      interaction,
+      'Edit Keywords (Modal)',
+      'Configure AutoMod Keywords',
+      [
+        {
+          id: 'keywords',
+          label: 'One keyword or phrase per line (max 100)',
+          style: TextInputStyle.Paragraph,
+          value: settings.automod.keywords.keywords.join('\n').slice(0, 4000),
+          placeholder: 'scam-domain.example\nfree nitro',
+          maxLength: 4000,
+        },
+      ],
+      async (mod) => {
+        await this.requirePermission(mod, P.ManageGuild);
+        if (!this.native) throw new UserError('Native AutoMod is not available in this build.');
+        await this.native.configure(guildId, 'keywords', {
+          keywords: mod.fields.getTextInputValue('keywords'),
+          categories: null,
+          limit: null,
+        });
+        return this.panel(mod, 'automod', 'Keywords preset draft saved');
+      },
+    );
+    const editMentionsBtn = this.makeModalButton(
+      interaction,
+      'Edit Mention Limit (Modal)',
+      'Configure Mention Spam Limit',
+      [
+        {
+          id: 'limit',
+          label: 'Mention limit per message (1–50)',
+          value: String(settings.automod.mentions.mentionLimit),
+          maxLength: 2,
+        },
+      ],
+      async (mod) => {
+        await this.requirePermission(mod, P.ManageGuild);
+        if (!this.native) throw new UserError('Native AutoMod is not available in this build.');
+        const limit = Number(mod.fields.getTextInputValue('limit').trim());
+        await this.native.configure(guildId, 'mentions', {
+          limit,
+          categories: null,
+          keywords: null,
+        });
+        return this.panel(mod, 'automod', 'Mention limit draft saved');
+      },
+    );
+    const editWordsBtn = this.makeModalButton(
+      interaction,
+      'Edit Word Categories (Modal)',
+      'Configure Discord Word Filters',
+      [
+        {
+          id: 'categories',
+          label: 'Categories (slurs, profanity, sexual)',
+          value: settings.automod.words.wordCategories
+            .map((c) => (c === 1 ? 'profanity' : c === 2 ? 'sexual' : 'slurs'))
+            .join(', '),
+          maxLength: 60,
+        },
+      ],
+      async (mod) => {
+        await this.requirePermission(mod, P.ManageGuild);
+        if (!this.native) throw new UserError('Native AutoMod is not available in this build.');
+        await this.native.configure(guildId, 'words', {
+          limit: null,
+          categories: mod.fields.getTextInputValue('categories'),
+          keywords: null,
+        });
+        return this.panel(mod, 'automod', 'Word categories draft saved');
+      },
+    );
+    return {
+      ...embedReply(embed),
+      components: [
+        navRow,
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          editKeywordsBtn,
+          editMentionsBtn,
+          editWordsBtn,
+        ),
+      ],
+    };
+  }
+  private async userContext(interaction: UserContextMenuCommandInteraction): Promise<Reply> {
+    await this.requirePermission(interaction, P.ModerateMembers);
+    const guildId = interaction.guildId!;
+    const targetId = interaction.targetUser.id;
+    const page = await this.store.listCases(guildId, targetId);
+    const createdSec = Math.floor(interaction.targetUser.createdTimestamp / 1000);
+    const embed = textEmbed(
+      'Member Inspection & Quick Moderation',
+      [
+        `**Member** ${person(targetId)} (\`${targetId}\`)`,
+        `**Account created** <t:${createdSec}:D> (<t:${createdSec}:R>)`,
+        `**Recent cases** ${page.records.length ? `${page.records.length}${page.next ? '+' : ''} on record` : 'None'}`,
+        ...page.records
+          .slice(0, 3)
+          .map(
+            (r) =>
+              `• ${r.caseNumber ? `#${r.caseNumber}` : `\`${r.id.slice(0, 8)}\``} **${actionLabel[r.action]}** (${caseStatus(r)}): ${escapeMarkdown(r.reason.slice(0, 60))}`,
+          ),
+      ].join('\n'),
+    );
+    const warnBtn = this.makeModalButton(
+      interaction,
+      'Warn',
+      `Warn ${interaction.targetUser.username}`.slice(0, 45),
+      [{ id: 'reason', label: 'Reason for warning', maxLength: 400 }],
+      async (mod) =>
+        this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'warn',
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        }),
+    );
+    const timeoutBtn = this.makeModalButton(
+      interaction,
+      'Timeout',
+      `Timeout ${interaction.targetUser.username}`.slice(0, 45),
+      [
+        {
+          id: 'duration',
+          label: 'Duration (e.g. 30m, 12h, 7d)',
+          value: '1h',
+          maxLength: 12,
+        },
+        { id: 'reason', label: 'Reason for timeout', maxLength: 400 },
+      ],
+      async (mod) =>
+        this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'timeout',
+          durationMs: parseDuration(mod.fields.getTextInputValue('duration').trim()),
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        }),
+    );
+    const kickBtn = this.makeModalButton(
+      interaction,
+      'Kick',
+      `Kick ${interaction.targetUser.username}`.slice(0, 45),
+      [{ id: 'reason', label: 'Reason for kick', maxLength: 400 }],
+      async (mod) =>
+        this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'kick',
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        }),
+      true,
+    );
+    const banBtn = this.makeModalButton(
+      interaction,
+      'Ban',
+      `Ban ${interaction.targetUser.username}`.slice(0, 45),
+      [{ id: 'reason', label: 'Reason for ban', maxLength: 400 }],
+      async (mod) =>
+        this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'ban',
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        }),
+      true,
+    );
+    const historyBtn = this.makeButton(
+      interaction,
+      'View Cases',
+      (btn) => this.history(btn, targetId),
+      false,
+      true,
+    );
+    return {
+      ...embedReply(embed),
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          warnBtn,
+          timeoutBtn,
+          kickBtn,
+          banBtn,
+          historyBtn,
+        ),
+      ],
+    };
+  }
+  private async messageContext(interaction: MessageContextMenuCommandInteraction): Promise<Reply> {
+    await this.requirePermission(interaction, P.ModerateMembers);
+    const guildId = interaction.guildId!;
+    const msg = interaction.targetMessage;
+    const targetId = msg.author.id;
+    const snippet = msg.content ? escapeMarkdown(msg.content.slice(0, 300)) : '*No text content*';
+    const embed = textEmbed(
+      'Moderate Message',
+      [
+        `**Author** ${person(targetId)} (\`${targetId}\`)`,
+        `**Channel** <#${interaction.channelId}> · **Message** \`${msg.id}\``,
+        `**Content preview**\n> ${snippet.replace(/\n/g, '\n> ')}`,
+      ].join('\n'),
+      'warning',
+    );
+    const deleteMessageIfPossible = async () => {
+      try {
+        const guild = await this.client.guilds.fetch(guildId);
+        const channel = await guild.channels.fetch(interaction.channelId);
+        if (channel?.isTextBased()) {
+          const fetched = await channel.messages.fetch(msg.id);
+          await fetched.delete();
+        }
+      } catch {
+        // Ignore if message was already deleted or bot lacks ManageMessages
+      }
+    };
+    const deleteAndWarn = this.makeModalButton(
+      interaction,
+      'Delete & Warn',
+      'Delete Message & Warn Author',
+      [
+        {
+          id: 'reason',
+          label: 'Reason for warning',
+          value: `Message in <#${interaction.channelId}>: ${msg.content.slice(0, 120)}`.slice(
+            0,
+            400,
+          ),
+          maxLength: 400,
+        },
+      ],
+      async (mod) => {
+        await deleteMessageIfPossible();
+        return this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'warn',
+          channelId: interaction.channelId,
+          messageId: msg.id,
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        });
+      },
+    );
+    const deleteAndTimeout = this.makeModalButton(
+      interaction,
+      'Delete & Timeout',
+      'Delete Message & Timeout Author',
+      [
+        { id: 'duration', label: 'Duration (e.g. 30m, 12h, 7d)', value: '1h', maxLength: 12 },
+        {
+          id: 'reason',
+          label: 'Reason for timeout',
+          value: `Message in <#${interaction.channelId}>: ${msg.content.slice(0, 120)}`.slice(
+            0,
+            400,
+          ),
+          maxLength: 400,
+        },
+      ],
+      async (mod) => {
+        await deleteMessageIfPossible();
+        return this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'timeout',
+          channelId: interaction.channelId,
+          messageId: msg.id,
+          durationMs: parseDuration(mod.fields.getTextInputValue('duration').trim()),
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        });
+      },
+      true,
+    );
+    const deleteAndBan = this.makeModalButton(
+      interaction,
+      'Delete & Ban',
+      'Delete Message & Ban Author',
+      [
+        {
+          id: 'reason',
+          label: 'Reason for ban',
+          value: `Message in <#${interaction.channelId}>: ${msg.content.slice(0, 120)}`.slice(
+            0,
+            400,
+          ),
+          maxLength: 400,
+        },
+      ],
+      async (mod) => {
+        await deleteMessageIfPossible();
+        return this.actionResult({
+          guildId,
+          targetId,
+          actorId: mod.user.id,
+          source: 'manual',
+          requestKey: mod.id,
+          action: 'ban',
+          channelId: interaction.channelId,
+          messageId: msg.id,
+          reason: parseReason(mod.fields.getTextInputValue('reason')),
+        });
+      },
+      true,
+    );
+    return {
+      ...embedReply(embed),
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          deleteAndWarn,
+          deleteAndTimeout,
+          deleteAndBan,
+        ),
+      ],
+    };
   }
   private async config(interaction: ChatInputCommandInteraction): Promise<Reply> {
     await this.requirePermission(interaction, P.ManageGuild);
@@ -202,9 +1020,11 @@ export class CommandRouter {
       case 'setup':
         await this.setLogChannel(settings, o.getChannel('log-channel', true).id);
         break;
-      case 'log-channel':
-        await this.setLogChannel(settings, o.getChannel('channel', true).id);
+      case 'log-channel': {
+        const logKind = (o.getString?.('type') ?? 'modLog') as keyof LogChannels;
+        await this.setLogChannel(settings, o.getChannel('channel', true).id, logKind);
         break;
+      }
       case 'notifications':
         settings.dmEnabled = o.getBoolean('dm', true);
         break;
@@ -282,16 +1102,21 @@ export class CommandRouter {
           .addFields(
             {
               name: 'Moderation',
-              value: '`/ban` `/unban` `/kick` `/warn` `/timeout` `/untimeout` `/legacy-unmute`',
+              value:
+                '`/ban` `/unban` `/kick` `/warn` `/timeout` `/untimeout` `/legacy-unmute`\nApps menu: `Inspect & Moderate` · `Moderate Message`',
             },
             {
               name: 'Cases',
               value: '`/cases` `/case view` `/case reason` `/case revoke` `/case resolve`',
             },
-            { name: 'Server setup', value: '`/setup` `/config` `/automod` `/doctor`' },
+            {
+              name: 'Server setup & control center',
+              value: '`/panel` `/setup` `/config` `/automod` `/doctor`',
+            },
           )
           .setFooter({ text: 'Replies are private · Timeouts last at most 28 days' }),
       );
+    if (name === 'panel') return this.panel(interaction);
     if (name === 'doctor') {
       await this.requirePermission(interaction, P.ManageGuild);
       if (!this.store.available())
@@ -382,7 +1207,71 @@ export class CommandRouter {
       await this.requirePermission(interaction, sub === 'view' ? P.ModerateMembers : P.ManageGuild);
       const record = await this.store.getCase(guildId, o.getString('id', true));
       if (!record) throw new UserError('Case not found in this server.');
-      if (sub === 'view') return embedReply(caseEmbed(record, true));
+      if (sub === 'view') {
+        const caseActions: ButtonBuilder[] = [
+          this.makeModalButton(
+            interaction,
+            'Amend Reason',
+            `Amend Case ${caseRef(record)}`.slice(0, 45),
+            [
+              {
+                id: 'reason',
+                label: 'Updated reason',
+                style: TextInputStyle.Paragraph,
+                value: record.reason,
+                maxLength: 400,
+              },
+            ],
+            async (mod) => {
+              await this.requirePermission(mod, P.ManageGuild);
+              const updated = await this.store.changeCase(guildId, record.id, {
+                actorId: mod.user.id,
+                at: new Date(),
+                kind: 'reason',
+                value: parseReason(mod.fields.getTextInputValue('reason')),
+                previous: record.reason,
+              });
+              return embedReply(caseEmbed(updated, true).setAuthor({ name: 'Reason updated' }));
+            },
+          ),
+        ];
+        if (
+          record.action === 'warn' &&
+          !record.revoked &&
+          ['succeeded', 'legacy_unverified'].includes(record.state)
+        ) {
+          caseActions.push(
+            this.makeModalButton(
+              interaction,
+              'Revoke Warning',
+              `Revoke Warning ${caseRef(record)}`.slice(0, 45),
+              [
+                {
+                  id: 'reason',
+                  label: 'Reason for revoking warning',
+                  maxLength: 400,
+                },
+              ],
+              async (mod) => {
+                await this.requirePermission(mod, P.ManageGuild);
+                const updated = await this.store.changeCase(guildId, record.id, {
+                  actorId: mod.user.id,
+                  at: new Date(),
+                  kind: 'revoke',
+                  value: parseReason(mod.fields.getTextInputValue('reason')),
+                  previous: record.state,
+                });
+                return embedReply(caseEmbed(updated, true).setAuthor({ name: 'Warning revoked' }));
+              },
+              true,
+            ),
+          );
+        }
+        return {
+          ...embedReply(caseEmbed(record, true)),
+          components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...caseActions)],
+        };
+      }
       const kind = sub === 'reason' ? 'reason' : sub === 'revoke' ? 'revoke' : 'resolve';
       const value = parseReason(o.getString(kind === 'resolve' ? 'evidence' : 'reason', true));
       const outcome =
