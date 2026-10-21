@@ -19,6 +19,8 @@ export const actionLabel: Record<Action, string> = {
   slowmode: 'Slowmode update',
   legacy_unmute: 'Legacy mute release',
   account_age_alert: 'Account-age alert',
+  raid_alert: 'Raid join-spike alert',
+  automod_block: 'AutoMod action',
   invite_delete: 'Invite removal',
   legacy_mute: 'Legacy mute',
   legacy_unknown: 'Legacy action',
@@ -114,6 +116,14 @@ export function settingsEmbed(settings: GuildSettings) {
         ? [
             `**Escalations** ${settings.escalations.enabled ? `On (${settings.escalations.rules.length} rules${settings.escalations.warnDecayDays ? ` · ${settings.escalations.warnDecayDays}d decay` : ''})` : 'Off'}`,
           ]
+        : []),
+      ...(settings.antiRaid
+        ? [
+            `**Anti-raid** ${settings.antiRaid.enabled ? `On (${settings.antiRaid.joinThreshold} joins/${settings.antiRaid.windowSeconds}s · ${settings.antiRaid.action})` : 'Off'}`,
+          ]
+        : []),
+      ...(settings.auditSync
+        ? [`**Audit sync** ${settings.auditSync.enabled ? 'On' : 'Off'}`]
         : []),
       ...(!settings.exemptRoles.length && !settings.exemptChannels.length
         ? ['**Exemptions** None']

@@ -118,6 +118,53 @@ describe('bot-run policies', () => {
       requestKey: `age:${targetId}:${event.joinedAt}`,
     });
   });
+  it('triggers anti-raid alert or kick when join rate crosses threshold and records AutoMod blocks when auditSync is enabled', async () => {
+    const f = policyFixture();
+    f.settings.accountAge.enabled = false;
+    f.settings.antiRaid = {
+      enabled: true,
+      joinThreshold: 2,
+      windowSeconds: 30,
+      action: 'kick',
+    };
+    const event = {
+      guildId,
+      userId: targetId,
+      bot: false,
+      roles: [],
+      permissions: 0n,
+      createdAt: Date.now() - 30 * 86_400_000,
+      joinedAt: new Date().toISOString(),
+    };
+    await f.policies.joined({ ...event, userId: '100000000000000001' });
+    expect(f.execute).not.toHaveBeenCalled();
+    await f.policies.joined({ ...event, userId: '100000000000000002' });
+    expect(f.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'kick',
+        source: 'raid_protection',
+        targetId: '100000000000000002',
+      }),
+    );
+
+    f.settings.auditSync = { enabled: true };
+    await f.policies.automodExecution({
+      guildId,
+      userId: targetId,
+      ruleId: 'rule-99',
+      actionType: 1,
+      channelId: '1560181480427225159',
+      messageId: '1560181480427225160',
+      matchedKeyword: 'scam-link',
+    });
+    expect(f.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'automod_block',
+        source: 'audit_sync',
+        targetId,
+      }),
+    );
+  });
   it('stops without actions when storage is unavailable', async () => {
     const f = policyFixture();
     vi.mocked(f.store.available).mockReturnValue(false);
@@ -279,5 +326,28 @@ describe('owned AutoMod presets', () => {
     f.rules[0]!.creator_id = 'foreign';
     await expect(f.manager.preview(guildId, 'mentions', false)).rejects.toThrow('not owned');
     expect(f.port.edit).not.toHaveBeenCalled();
+  });
+  it('supports regex patterns, allow-list, mention raid protection, and AutoMod timeout actions', async () => {
+    const f = nativeFixture();
+    await f.manager.configure(guildId, 'keywords', {
+      limit: null,
+      categories: null,
+      keywords: null,
+      regex: 'discord\\.gg/[a-z0-9]+',
+      allowList: 'discord.gg/official',
+      timeoutSeconds: 300,
+    });
+    expect(f.settings.automod.keywords.regexPatterns).toEqual(['discord\\.gg/[a-z0-9]+']);
+    expect(f.settings.automod.keywords.allowList).toEqual(['discord.gg/official']);
+    expect(f.settings.automod.keywords.timeoutSeconds).toBe(300);
+    const p = await f.manager.preview(guildId, 'keywords', true);
+    await f.manager.apply(guildId, 'keywords', true, p.fingerprint);
+    expect(f.rules[0]!.trigger_metadata).toMatchObject({
+      regex_patterns: ['discord\\.gg/[a-z0-9]+'],
+      allow_list: ['discord.gg/official'],
+    });
+    expect(f.rules[0]!.actions).toEqual(
+      expect.arrayContaining([{ type: 3, metadata: { duration_seconds: 300 } }]),
+    );
   });
 });

@@ -16,6 +16,8 @@ export const actionPermissions = {
   slowmode: P.ManageChannels,
   legacy_unmute: P.ModerateMembers,
   account_age_alert: 0n,
+  raid_alert: 0n,
+  automod_block: 0n,
   invite_delete: P.ManageMessages,
   legacy_mute: 0n,
   legacy_unknown: 0n,
@@ -59,6 +61,8 @@ export function checkPermissions(request: ActionRequest, context: PermissionCont
     channelAction ||
     request.action === 'invite_delete' ||
     request.action === 'account_age_alert' ||
+    request.action === 'raid_alert' ||
+    request.action === 'automod_block' ||
     request.action === 'unban'
   )
     return;

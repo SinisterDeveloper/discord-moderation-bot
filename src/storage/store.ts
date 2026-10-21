@@ -100,8 +100,10 @@ const settingsSchema = new Schema(
     accountAge: { type: Schema.Types.Mixed, required: true },
     invites: { type: Schema.Types.Mixed, required: true },
     escalations: Schema.Types.Mixed,
+    antiRaid: Schema.Types.Mixed,
     appeals: Schema.Types.Mixed,
     reports: Schema.Types.Mixed,
+    auditSync: Schema.Types.Mixed,
     exemptRoles: [String],
     exemptChannels: [String],
     legacyMuteRoleId: { type: String, default: null },
@@ -219,7 +221,11 @@ export class MongoStore implements Store {
       .lean();
     if (existing) return { record: asCase(existing), created: false };
     const now = new Date();
-    const isAlert = request.action === 'account_age_alert' || request.action === 'invite_delete';
+    const isAlert =
+      request.action === 'account_age_alert' ||
+      request.action === 'raid_alert' ||
+      request.action === 'automod_block' ||
+      request.action === 'invite_delete';
     const targetLogChannel = isAlert
       ? (settings.channels?.alertLog ?? settings.channels?.modLog ?? settings.logChannelId)
       : (settings.channels?.modLog ?? settings.logChannelId);

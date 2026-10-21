@@ -432,6 +432,57 @@ const commands = [
             .setDescription('Optional dedicated member report channel.')
             .addChannelTypes(ChannelType.GuildText),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('anti-raid')
+        .setDescription('Configure join-spike anti-raid protection.')
+        .addBooleanOption((o) =>
+          o.setName('enabled').setDescription('Enable anti-raid protection.').setRequired(true),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('threshold')
+            .setDescription('Joins within window to trigger (2–100).')
+            .setMinValue(2)
+            .setMaxValue(100),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('window-seconds')
+            .setDescription('Window in seconds (5–300).')
+            .setMinValue(5)
+            .setMaxValue(300),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('action')
+            .setDescription('Action when triggered.')
+            .setChoices({ name: 'Alert', value: 'alert' }, { name: 'Kick', value: 'kick' }),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('audit-sync')
+        .setDescription('Enable or disable recording native AutoMod blocks as cases.')
+        .addBooleanOption((o) =>
+          o.setName('enabled').setDescription('Sync AutoMod blocks into cases.').setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s.setName('backup').setDescription('Export portable server policy configuration as JSON.'),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('restore')
+        .setDescription('Restore portable server policy configuration from JSON.')
+        .addStringOption((o) =>
+          o
+            .setName('json')
+            .setDescription('Portable configuration JSON payload.')
+            .setRequired(true)
+            .setMaxLength(6000),
+        ),
     ),
   base('report', 'Report a member or message to server staff.')
     .addUserOption((o) => o.setName('user').setDescription('Member to report.').setRequired(true))
@@ -469,6 +520,30 @@ const commands = [
             .setName('keywords')
             .setDescription('One entry per line, at most 100.')
             .setMaxLength(6000),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('regex')
+            .setDescription('Regex patterns (one per line, up to 10, keywords preset only).')
+            .setMaxLength(2600),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('allow-list')
+            .setDescription('Exempt words/phrases (comma or newline separated).')
+            .setMaxLength(4000),
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName('raid-protection')
+            .setDescription('Enable mention raid protection (mentions preset only).'),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('timeout-seconds')
+            .setDescription('AutoMod timeout duration in seconds (0 to disable, 60–2419200).')
+            .setMinValue(0)
+            .setMaxValue(2419200),
         ),
     )
     .addSubcommand((s) =>

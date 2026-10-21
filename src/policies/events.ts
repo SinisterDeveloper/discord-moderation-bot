@@ -108,4 +108,19 @@ export function attachPolicies(
       dispatch(() => message(raw));
     });
   }
+  client.on(Events.AutoModerationActionExecution, (execution) => {
+    if (scope && (execution.guild.id !== scope.guildId || execution.userId !== scope.targetId))
+      return;
+    dispatch(() =>
+      policies.automodExecution({
+        guildId: execution.guild.id,
+        userId: execution.userId,
+        ruleId: execution.ruleId,
+        actionType: execution.action.type,
+        channelId: execution.channelId ?? undefined,
+        messageId: execution.messageId ?? undefined,
+        matchedKeyword: execution.matchedKeyword,
+      }),
+    );
+  });
 }

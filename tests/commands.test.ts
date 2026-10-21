@@ -369,6 +369,53 @@ describe('interaction handling', () => {
       expect.objectContaining({ kind: 'revoke' }),
     );
   });
+  it('exports and restores portable server configuration via /config backup and /config restore', async () => {
+    const f = fixture();
+    const client = {
+      guilds: {
+        fetch: async () => ({
+          ownerId: actorId,
+          members: { fetch: async () => ({ id: actorId, permissions: { has: () => true } }) },
+        }),
+      },
+    } as unknown as Client;
+    const router = new CommandRouter(client, f.store, new ModerationService(f.store, f.discord), {
+      memberEvents: true,
+      messageFilter: true,
+    });
+    const backupCmd = {
+      ...interaction('config'),
+      options: {
+        getSubcommand: () => 'backup',
+      },
+    };
+    expect(await router.handle(backupCmd as unknown as ChatInputCommandInteraction)).toBe(true);
+    const backupReply = backupCmd.editReply.mock.calls[0]![0];
+    expect(backupReply.files).toHaveLength(1);
+
+    const restoreCmd = {
+      ...interaction('config'),
+      options: {
+        getSubcommand: () => 'restore',
+        getString: () =>
+          JSON.stringify({
+            dmEnabled: false,
+            accountAge: { enabled: true, days: 14, action: 'kick' },
+            antiRaid: { enabled: true, joinThreshold: 8, windowSeconds: 20, action: 'alert' },
+            auditSync: { enabled: true },
+          }),
+      },
+    };
+    expect(await router.handle(restoreCmd as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(f.store.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dmEnabled: false,
+        accountAge: { enabled: true, days: 14, action: 'kick' },
+        antiRaid: { enabled: true, joinThreshold: 8, windowSeconds: 20, action: 'alert' },
+        auditSync: { enabled: true },
+      }),
+    );
+  });
 });
 afterEach(() => vi.useRealTimers());
 describe('commands and permissions', () => {

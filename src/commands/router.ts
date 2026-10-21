@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelSelectMenuBuilder,
@@ -53,7 +54,15 @@ export interface NativeCommands {
   configure(
     guildId: string,
     preset: Preset,
-    input: { limit: number | null; categories: string | null; keywords: string | null },
+    input: {
+      limit: number | null;
+      categories: string | null;
+      keywords: string | null;
+      regex?: string | null;
+      allowList?: string | null;
+      raidProtection?: boolean | null;
+      timeoutSeconds?: number | null;
+    },
   ): Promise<string>;
   preview(
     guildId: string,
@@ -412,7 +421,8 @@ export class CommandRouter {
       } else {
         const chat = interaction as ChatInputCommandInteraction;
         await chat.deferReply({ flags: MessageFlags.Ephemeral });
-        const key = `${chat.guildId}:${chat.user.id}:${chat.commandName}`;
+        const subKey = chat.options?.getSubcommand?.(false) ?? '';
+        const key = `${chat.guildId}:${chat.user.id}:${chat.commandName}:${subKey}`;
         if ((this.lastUse.get(key) ?? 0) > Date.now())
           throw new UserError('Wait one second before repeating this command.');
         if (this.lastUse.size >= 5000) this.lastUse.delete(this.lastUse.keys().next().value!);
@@ -1409,10 +1419,148 @@ export class CommandRouter {
         if (chan) await this.setLogChannel(settings, chan, 'reportLog');
         break;
       }
+      case 'anti-raid': {
+        const enabled = o.getBoolean('enabled', true);
+        const current = settings.antiRaid ?? {
+          enabled: false,
+          joinThreshold: 10,
+          windowSeconds: 30,
+          action: 'alert',
+        };
+        current.enabled = enabled;
+        const threshold = o.getInteger?.('threshold') ?? null;
+        if (threshold !== null) current.joinThreshold = threshold;
+        const windowSeconds = o.getInteger?.('window-seconds') ?? null;
+        if (windowSeconds !== null) current.windowSeconds = windowSeconds;
+        const action = o.getString?.('action') as 'alert' | 'kick' | null;
+        if (action === 'alert' || action === 'kick') current.action = action;
+        if (current.enabled && !this.capabilities.memberEvents)
+          throw new UserError(
+            'Enable member events in runtime configuration and restart before enabling this policy.',
+          );
+        if (current.enabled && current.action === 'kick')
+          await this.requirePermission(interaction, P.KickMembers);
+        settings.antiRaid = current;
+        break;
+      }
+      case 'audit-sync': {
+        settings.auditSync = { enabled: o.getBoolean('enabled', true) };
+        break;
+      }
+      case 'backup': {
+        const portable = {
+          dmEnabled: settings.dmEnabled,
+          accountAge: settings.accountAge,
+          invites: settings.invites,
+          escalations: settings.escalations,
+          appeals: settings.appeals,
+          reports: settings.reports,
+          antiRaid: settings.antiRaid,
+          auditSync: settings.auditSync,
+          automod: {
+            mentions: {
+              mentionLimit: settings.automod.mentions.mentionLimit,
+              mentionRaidProtection: settings.automod.mentions.mentionRaidProtection,
+              timeoutSeconds: settings.automod.mentions.timeoutSeconds,
+            },
+            words: {
+              wordCategories: settings.automod.words.wordCategories,
+              allowList: settings.automod.words.allowList,
+              timeoutSeconds: settings.automod.words.timeoutSeconds,
+            },
+            keywords: {
+              keywords: settings.automod.keywords.keywords,
+              regexPatterns: settings.automod.keywords.regexPatterns,
+              allowList: settings.automod.keywords.allowList,
+              timeoutSeconds: settings.automod.keywords.timeoutSeconds,
+            },
+          },
+        };
+        const payload = JSON.stringify(portable, null, 2);
+        const attachment = new AttachmentBuilder(Buffer.from(payload, 'utf8'), {
+          name: `modbot-config-${settings.guildId}.json`,
+        });
+        return {
+          ...embedReply(
+            textEmbed(
+              'Configuration backup exported',
+              `Portable configuration for server \`${settings.guildId}\` attached as JSON.`,
+              'success',
+            ),
+          ),
+          files: [attachment],
+        };
+      }
+      case 'restore': {
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(o.getString('json', true)) as Record<string, unknown>;
+        } catch {
+          throw new UserError('Invalid JSON configuration payload.');
+        }
+        if (typeof parsed.dmEnabled === 'boolean') settings.dmEnabled = parsed.dmEnabled;
+        if (parsed.accountAge && typeof parsed.accountAge === 'object') {
+          const age = parsed.accountAge as Record<string, unknown>;
+          if (
+            typeof age.enabled === 'boolean' &&
+            typeof age.days === 'number' &&
+            Number.isInteger(age.days) &&
+            age.days >= 1 &&
+            age.days <= 3650 &&
+            (age.action === 'alert' || age.action === 'kick')
+          ) {
+            settings.accountAge = {
+              enabled: age.enabled,
+              days: age.days,
+              action: age.action,
+            };
+          }
+        }
+        if (parsed.invites && typeof parsed.invites === 'object') {
+          const inv = parsed.invites as Record<string, unknown>;
+          if (typeof inv.enabled === 'boolean') settings.invites = { enabled: inv.enabled };
+        }
+        if (parsed.appeals && typeof parsed.appeals === 'object') {
+          const app = parsed.appeals as Record<string, unknown>;
+          if (typeof app.enabled === 'boolean') settings.appeals = { enabled: app.enabled };
+        }
+        if (parsed.reports && typeof parsed.reports === 'object') {
+          const rep = parsed.reports as Record<string, unknown>;
+          if (typeof rep.enabled === 'boolean') settings.reports = { enabled: rep.enabled };
+        }
+        if (parsed.auditSync && typeof parsed.auditSync === 'object') {
+          const sync = parsed.auditSync as Record<string, unknown>;
+          if (typeof sync.enabled === 'boolean') settings.auditSync = { enabled: sync.enabled };
+        }
+        if (parsed.antiRaid && typeof parsed.antiRaid === 'object') {
+          const raid = parsed.antiRaid as Record<string, unknown>;
+          if (
+            typeof raid.enabled === 'boolean' &&
+            typeof raid.joinThreshold === 'number' &&
+            raid.joinThreshold >= 2 &&
+            raid.joinThreshold <= 100 &&
+            typeof raid.windowSeconds === 'number' &&
+            raid.windowSeconds >= 5 &&
+            raid.windowSeconds <= 300 &&
+            (raid.action === 'alert' || raid.action === 'kick')
+          ) {
+            settings.antiRaid = {
+              enabled: raid.enabled,
+              joinThreshold: raid.joinThreshold,
+              windowSeconds: raid.windowSeconds,
+              action: raid.action,
+            };
+          }
+        }
+        break;
+      }
       default:
         throw new UserError('Unknown configuration operation.');
     }
-    if ((settings.accountAge.enabled || settings.invites.enabled) && !settings.logChannelId)
+    if (
+      (settings.accountAge.enabled || settings.invites.enabled || settings.antiRaid?.enabled) &&
+      !settings.logChannelId
+    )
       throw new UserError('Run /setup to choose a staff log channel first.');
     await this.store.saveSettings(settings);
     return embedReply(
@@ -1750,6 +1898,10 @@ export class CommandRouter {
               limit: o.getInteger('limit'),
               categories: o.getString('categories'),
               keywords: o.getString('keywords'),
+              regex: o.getString?.('regex') ?? null,
+              allowList: o.getString?.('allow-list') ?? null,
+              raidProtection: o.getBoolean?.('raid-protection') ?? null,
+              timeoutSeconds: o.getInteger?.('timeout-seconds') ?? null,
             }),
             'success',
           ),

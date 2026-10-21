@@ -224,6 +224,8 @@ export class DiscordAdapter implements DiscordPort {
         case 'warn':
         case 'note':
         case 'account_age_alert':
+        case 'raid_alert':
+        case 'automod_block':
           break;
         case 'legacy_mute':
         case 'legacy_unknown':

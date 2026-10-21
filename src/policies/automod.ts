@@ -55,14 +55,29 @@ export function normalizeRule(rule: RuleSpec) {
 function specFor(settings: GuildSettings, preset: Preset, enabled: boolean): RuleSpec {
   const config = settings.automod[preset];
   if (enabled && !settings.logChannelId) throw new UserError('Run /setup before applying a rule.');
-  if (enabled && preset === 'keywords' && !config.keywords.length)
-    throw new UserError('Configure at least one keyword first.');
+  if (
+    enabled &&
+    preset === 'keywords' &&
+    !config.keywords.length &&
+    !(config.regexPatterns ?? []).length
+  )
+    throw new UserError('Configure at least one keyword or regex pattern first.');
   const metadata =
     preset === 'mentions'
-      ? { mention_total_limit: config.mentionLimit }
+      ? {
+          mention_total_limit: config.mentionLimit,
+          ...(config.mentionRaidProtection ? { mention_raid_protection_enabled: true } : {}),
+        }
       : preset === 'words'
-        ? { presets: config.wordCategories }
-        : { keyword_filter: config.keywords };
+        ? {
+            presets: config.wordCategories,
+            ...(config.allowList?.length ? { allow_list: config.allowList } : {}),
+          }
+        : {
+            keyword_filter: config.keywords,
+            ...(config.regexPatterns?.length ? { regex_patterns: config.regexPatterns } : {}),
+            ...(config.allowList?.length ? { allow_list: config.allowList } : {}),
+          };
   return {
     name: `Moderation v3 ${preset} [${config.key}]`,
     event_type: 1,
@@ -73,6 +88,9 @@ function specFor(settings: GuildSettings, preset: Preset, enabled: boolean): Rul
       { type: 1 },
       ...(settings.logChannelId
         ? [{ type: 2, metadata: { channel_id: settings.logChannelId } }]
+        : []),
+      ...(config.timeoutSeconds && config.timeoutSeconds > 0
+        ? [{ type: 3, metadata: { duration_seconds: config.timeoutSeconds } }]
         : []),
     ],
     exempt_roles: settings.exemptRoles,
@@ -122,7 +140,15 @@ export class AutoModManager implements NativeCommands {
   async configure(
     guildId: string,
     preset: Preset,
-    input: { limit: number | null; categories: string | null; keywords: string | null },
+    input: {
+      limit: number | null;
+      categories: string | null;
+      keywords: string | null;
+      regex?: string | null;
+      allowList?: string | null;
+      raidProtection?: boolean | null;
+      timeoutSeconds?: number | null;
+    },
   ) {
     const settings = await this.store.getSettings(guildId);
     const config = settings.automod[preset];
@@ -159,6 +185,51 @@ export class AutoModManager implements NativeCommands {
       if (!entries.length || entries.length > 100 || entries.some((v) => v.length > 60))
         throw new UserError('Provide 1–100 keyword lines, each at most 60 characters.');
       config.keywords = entries;
+    }
+    if (input.regex !== undefined && input.regex !== null) {
+      if (preset !== 'keywords')
+        throw new UserError('Regex patterns apply only to the keywords preset.');
+      const entries = [
+        ...new Set(
+          input.regex
+            .split(/\r?\n/)
+            .map((v) => v.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (entries.length > 10 || entries.some((v) => v.length > 260))
+        throw new UserError('Provide up to 10 regex lines, each at most 260 characters.');
+      config.regexPatterns = entries;
+    }
+    if (input.allowList !== undefined && input.allowList !== null) {
+      if (preset !== 'keywords' && preset !== 'words')
+        throw new UserError('Allow lists apply only to keywords or words presets.');
+      const entries = [
+        ...new Set(
+          input.allowList
+            .split(/[\r\n,]+/)
+            .map((v) => v.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (entries.length > 100 || entries.some((v) => v.length > 60))
+        throw new UserError('Provide up to 100 allow-list entries, each at most 60 characters.');
+      config.allowList = entries;
+    }
+    if (input.raidProtection !== undefined && input.raidProtection !== null) {
+      if (preset !== 'mentions')
+        throw new UserError('Mention raid protection applies only to the mentions preset.');
+      config.mentionRaidProtection = input.raidProtection;
+    }
+    if (input.timeoutSeconds !== undefined && input.timeoutSeconds !== null) {
+      if (
+        !Number.isInteger(input.timeoutSeconds) ||
+        (input.timeoutSeconds !== 0 &&
+          (input.timeoutSeconds < 60 || input.timeoutSeconds > 2_419_200))
+      )
+        throw new UserError('AutoMod timeout must be 0 (off) or between 60 and 2419200 seconds.');
+      if (input.timeoutSeconds === 0) delete config.timeoutSeconds;
+      else config.timeoutSeconds = input.timeoutSeconds;
     }
     await this.store.saveSettings(settings);
     return 'Preset configuration saved. Use /automod apply to preview and enable it.';

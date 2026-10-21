@@ -15,6 +15,8 @@ export const actions = [
   'slowmode',
   'legacy_unmute',
   'account_age_alert',
+  'raid_alert',
+  'automod_block',
   'invite_delete',
   'legacy_mute',
   'legacy_unknown',
@@ -41,6 +43,10 @@ export interface ManagedPreset {
   mentionLimit: number;
   wordCategories: number[];
   keywords: string[];
+  regexPatterns?: string[];
+  allowList?: string[];
+  mentionRaidProtection?: boolean;
+  timeoutSeconds?: number | null;
 }
 export interface LogChannels {
   modLog?: string | null;
@@ -66,6 +72,12 @@ export interface AppealRecord {
   reviewedBy?: string;
   reviewedAt?: Date;
 }
+export interface AntiRaidSettings {
+  enabled: boolean;
+  joinThreshold: number;
+  windowSeconds: number;
+  action: 'alert' | 'kick';
+}
 export interface GuildSettings {
   guildId: string;
   version: number;
@@ -77,8 +89,10 @@ export interface GuildSettings {
   accountAge: { enabled: boolean; days: number; action: 'alert' | 'kick' };
   invites: { enabled: boolean };
   escalations?: EscalationSettings;
+  antiRaid?: AntiRaidSettings;
   appeals?: { enabled: boolean };
   reports?: { enabled: boolean };
+  auditSync?: { enabled: boolean };
   exemptRoles: string[];
   exemptChannels: string[];
   legacyMuteRoleId: string | null;

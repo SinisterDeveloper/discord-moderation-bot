@@ -18,6 +18,15 @@ export interface MessageEvent extends Subject {
   messageId: string;
   content: string;
 }
+export interface AutoModEvent {
+  guildId: string;
+  userId: string;
+  ruleId: string;
+  actionType: number;
+  channelId?: string | undefined;
+  messageId?: string | undefined;
+  matchedKeyword?: string | null | undefined;
+}
 export function inviteCodes(content: string): string[] {
   const pattern =
     /(?<![\w.-])(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9_-]{1,128})/gi;
@@ -47,6 +56,7 @@ export class InviteResolver {
 }
 export class PolicyService {
   private alerts = new Map<string, number>();
+  private joinWindows = new Map<string, number[]>();
   constructor(
     private readonly store: Store,
     private readonly moderation: ModerationService,
@@ -75,7 +85,30 @@ export class PolicyService {
   async joined(event: JoinEvent) {
     if (!this.store.available()) return;
     const settings = await this.store.getSettings(event.guildId);
-    if (!settings.accountAge.enabled || this.exempt(event, settings.exemptRoles)) return;
+    if (this.exempt(event, settings.exemptRoles)) return;
+    if (settings.antiRaid?.enabled) {
+      const now = Date.now();
+      const cutoff = now - settings.antiRaid.windowSeconds * 1000;
+      const recent = (this.joinWindows.get(event.guildId) ?? []).filter((ts) => ts > cutoff);
+      recent.push(now);
+      if (this.joinWindows.size >= 1000 && !this.joinWindows.has(event.guildId))
+        this.joinWindows.delete(this.joinWindows.keys().next().value!);
+      this.joinWindows.set(event.guildId, recent);
+      if (recent.length >= settings.antiRaid.joinThreshold) {
+        await this.moderation.execute({
+          guildId: event.guildId,
+          targetId: event.userId,
+          actorId: this.botId(),
+          source: 'raid_protection',
+          action: settings.antiRaid.action === 'kick' ? 'kick' : 'raid_alert',
+          reason: `Join rate (${recent.length} joins in ${settings.antiRaid.windowSeconds}s) exceeded anti-raid threshold (${settings.antiRaid.joinThreshold}).`,
+          requestKey: `raid:${event.userId}:${event.joinedAt}`,
+          joinedAt: event.joinedAt,
+        });
+        if (settings.antiRaid.action === 'kick') return;
+      }
+    }
+    if (!settings.accountAge.enabled) return;
     const age = (Date.now() - event.createdAt) / 86_400_000;
     if (age >= settings.accountAge.days) return;
     await this.moderation.execute({
@@ -129,5 +162,22 @@ export class PolicyService {
         'INVITE_LOOKUP',
         'An invite could not be resolved. The message was left in place. Check invite filtering and Discord access.',
       );
+  }
+  async automodExecution(event: AutoModEvent) {
+    if (!this.store.available()) return;
+    if (event.actionType !== 1) return;
+    const settings = await this.store.getSettings(event.guildId);
+    if (!settings.auditSync?.enabled) return;
+    const keywordNote = event.matchedKeyword ? ` (${event.matchedKeyword})` : '';
+    await this.moderation.execute({
+      guildId: event.guildId,
+      targetId: event.userId,
+      actorId: this.botId(),
+      source: 'audit_sync',
+      action: 'automod_block',
+      reason: `Blocked by native Discord AutoMod rule ${event.ruleId}${keywordNote}.`,
+      requestKey: `automod:${event.ruleId}:${event.messageId ?? `${event.userId}:${Math.floor(Date.now() / 5000)}`}`,
+      ...(event.channelId ? { channelId: event.channelId } : {}),
+    });
   }
 }
