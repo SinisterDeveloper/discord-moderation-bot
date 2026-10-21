@@ -54,29 +54,44 @@ For development, use `npm run dev`. For a server deployment, run the built appli
 
 ## Commands
 
-| Commands                                                  | User permission  |
-| --------------------------------------------------------- | ---------------- |
-| `/ban`, `/unban`                                          | Ban Members      |
-| `/kick`                                                   | Kick Members     |
-| `/warn`, `/timeout`, `/untimeout`, `/cases`, `/case view` | Moderate Members |
-| `/case reason`, `/case revoke`, `/case resolve`           | Manage Server    |
-| `/legacy-unmute`                                          | Moderate Members |
-| `/setup`, `/config`, `/automod`, `/doctor`                | Manage Server    |
-| `/help`, `/ping`                                          | Any member       |
+| Commands                                                                      | User permission  |
+| ----------------------------------------------------------------------------- | ---------------- |
+| `/ban`, `/tempban`, `/softban`, `/unban`                                      | Ban Members      |
+| `/kick`                                                                       | Kick Members     |
+| `/warn`, `/note`, `/timeout`, `/untimeout`, `/whois`, `/cases`, `/case view`  | Moderate Members |
+| `Inspect & Moderate` (User Apps Menu), `Moderate Message` (Message Apps Menu) | Moderate Members |
+| `/purge`                                                                      | Manage Messages  |
+| `/lock`, `/unlock`, `/slowmode`                                               | Manage Channels  |
+| `/case reason`, `/case revoke`, `/case resolve`                               | Manage Server    |
+| `/legacy-unmute`                                                              | Moderate Members |
+| `/panel`, `/setup`, `/config`, `/automod`, `/doctor`                          | Manage Server    |
+| `/report`, `Report Message` (Message Apps Menu), `/help`, `/ping`             | Any member       |
 
-Reasons are required. Ban and kick need confirmation within 60 seconds. Timeouts accept values such as `30m`, `12h`, or `7d`, up to 28 days. New indefinite role mutes are not supported.
-
-Command replies are private and use compact embeds. DMs and bot staff logs use the same format. Case IDs are stable. History shows 10 cases per page. Use `/case view` for delivery details and recent changes. Case changes retain the previous value and the actor. A warning can be revoked; other Discord actions must be reversed with their matching commands. Each case supports up to 100 amendments.
-
-The mixed `/case` command group uses checks for each subcommand. Other restricted command groups also set Discord permission defaults. Server integration settings can change command visibility, but cannot bypass runtime checks.
+- **Interactive Control Center (`/panel`)**: Configure log channels, multi-select exempt roles and channels (`RoleSelectMenu` & `ChannelSelectMenu`), automated policies, warning escalations, and native AutoMod drafts via interactive modals—100% inside Discord without an external web dashboard.
+- **Sequential Case Numbers & Autocomplete**: Every server case receives a human-friendly sequential `#caseNumber` alongside its 24-character ObjectId, with live autocomplete on `/case` subcommands, bidirectional pagination and action filtering on `/cases`, and interactive `Amend Reason` / `Revoke Warning` modals on `/case view`.
+- **Moderation & Channel Controls**:
+  - `/ban`, `/tempban` (up to 365d with automatic scheduled unban), and `/softban` support `delete-days` (`0–7`).
+  - `/note` records private staff-only notes on a member without DMing the user.
+  - `/whois` displays a member dossier (account age, join date, roles, timeout status, and recent cases) with quick buttons.
+  - `/purge` bulk-deletes up to 100 recent messages with optional filters (`user`, `contains`, `bots-only`, `attachments-only`).
+  - `/lock` (with optional auto-unlock duration), `/unlock`, and `/slowmode` manage channel rate limits and send permissions.
+- **In-Discord DM Appeals & Member Reporting**:
+  - Action DMs include a stateless `Submit Appeal` button (`v3a:*` custom IDs) that opens an appeal modal in DMs and routes the submission to staff (`appealLog` or `modLog`) with `Approve & Reverse` and `Reject Appeal` buttons.
+  - `/report` and the `Report Message` context menu let members report issues with message snapshots directly to `reportLog`.
 
 ## Automated policies
 
 - `/config account-age`: alert or kick accounts below a whole-day threshold. The default setup value is seven days with alert mode. Kick mode also requires the configuring user to have Kick Members.
+- `/config anti-raid`: detect join-rate spikes (`threshold` joins within `window-seconds`) and automatically alert staff or kick incoming joiners.
 - `/config invites`: delete messages with resolved invites to another server. Valid same-server invites remain. Failed or expired lookups leave the message in place and cause a rate-limited staff alert. Message edits are checked too.
+- `/config escalation`: configure warning expiry (`decay-days`) and automated strike thresholds (`threshold` active warnings within `window-days` → `timeout`, `tempban`, `kick`, or `ban`).
+- `/config log-channel`: route `modLog`, `alertLog`, `appealLog`, and `reportLog` to dedicated channels or a shared staff channel.
+- `/config appeals` and `/config reports`: toggle DM appeals and member reporting and optionally assign dedicated channels.
+- `/config audit-sync`: optionally record native Discord AutoMod blocks (`automod_block`) into server case history.
+- `/config backup` and `/config restore`: export and import portable server policy configurations as JSON attachments inside Discord.
 - `/config exempt-role` and `/config exempt-channel`: manage shared exemptions. Channel exemptions do not affect join checks. Bots and administrators bypass bot-run policies.
-- `/automod configure`: save a draft for mention spam, Discord word categories, or keywords.
-- `/automod apply`: preview and confirm a native rule. The rule blocks matching messages and sends a native alert. Native rules continue while the bot is offline.
+- `/automod configure`: save a draft for mention spam (including `raid-protection`), Discord word categories, or keywords (including `regex` patterns, `allow-list`, and `timeout-seconds`).
+- `/automod apply`: preview and confirm a native rule. The rule blocks matching messages, sends a native alert, and optionally applies a timeout. Native rules continue while the bot is offline.
 - `/automod disable`: preview and disable an owned rule.
 
 The bot never adopts another application's AutoMod rules or replaces a full rule slot. `/doctor` reports missing rules and external changes. Reapply each owned preset after changing exemptions or the staff channel. Native AutoMod has Discord's own exemptions and behavior; these do not exactly match custom bot filters.
