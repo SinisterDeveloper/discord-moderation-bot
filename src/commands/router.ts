@@ -1101,13 +1101,14 @@ export class CommandRouter {
         textEmbed('Command guide', 'Choose a command to see its options.')
           .addFields(
             {
-              name: 'Moderation',
+              name: 'Member Moderation',
               value:
-                '`/ban` `/unban` `/kick` `/warn` `/timeout` `/untimeout` `/legacy-unmute`\nApps menu: `Inspect & Moderate` · `Moderate Message`',
+                '`/ban` `/tempban` `/softban` `/unban` `/kick` `/warn` `/note` `/timeout` `/untimeout` `/legacy-unmute` `/whois`\nApps menu: `Inspect & Moderate` · `Moderate Message`',
             },
             {
-              name: 'Cases',
-              value: '`/cases` `/case view` `/case reason` `/case revoke` `/case resolve`',
+              name: 'Channel Control & Cases',
+              value:
+                '`/purge` `/lock` `/unlock` `/slowmode`\n`/cases` `/case view` `/case reason` `/case revoke` `/case resolve`',
             },
             {
               name: 'Server setup & control center',
@@ -1117,6 +1118,81 @@ export class CommandRouter {
           .setFooter({ text: 'Replies are private · Timeouts last at most 28 days' }),
       );
     if (name === 'panel') return this.panel(interaction);
+    if (name === 'whois') {
+      await this.requirePermission(interaction, P.ModerateMembers);
+      const user = o.getUser('user', true);
+      const page = await this.store.listCases(guildId, user.id);
+      let memberInfo = '*Not currently in server*';
+      try {
+        const guild = await this.client.guilds.fetch(guildId);
+        const member = await guild.members.fetch({ user: user.id, force: true });
+        const joinedSec = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
+        const roles = [...member.roles.cache.values()]
+          .filter((r) => r.id !== guildId)
+          .slice(0, 15)
+          .map((r) => `<@&${r.id}>`);
+        const timedOut = member.isCommunicationDisabled?.()
+          ? `\n**Timed out until** <t:${Math.floor(member.communicationDisabledUntilTimestamp! / 1000)}:f>`
+          : '';
+        memberInfo =
+          [
+            `**Joined server** ${joinedSec ? `<t:${joinedSec}:D> (<t:${joinedSec}:R>)` : 'Unknown'}`,
+            `**Roles (${roles.length})** ${roles.length ? roles.join(' ') : 'None'}`,
+          ].join('\n') + timedOut;
+      } catch {
+        // Member not in guild or fetch unavailable
+      }
+      const createdSec = user.createdTimestamp ? Math.floor(user.createdTimestamp / 1000) : 0;
+      const embed = textEmbed(
+        'Member Dossier',
+        [
+          `**User** ${person(user.id)} (\`${user.id}\`)`,
+          ...(createdSec ? [`**Account created** <t:${createdSec}:D> (<t:${createdSec}:R>)`] : []),
+          memberInfo,
+          `**Recorded cases** ${page.records.length}${page.next ? '+' : ''}`,
+          ...page.records
+            .slice(0, 5)
+            .map(
+              (r) =>
+                `• ${r.caseNumber ? `#${r.caseNumber}` : `\`${r.id.slice(0, 8)}\``} **${actionLabel[r.action]}** (${caseStatus(r)}) — ${escapeMarkdown(r.reason.slice(0, 60))}`,
+            ),
+        ].join('\n'),
+      );
+      const noteBtn = this.makeModalButton(
+        interaction,
+        'Add Staff Note',
+        `Note for ${user.username}`.slice(0, 45),
+        [
+          {
+            id: 'reason',
+            label: 'Staff note (private)',
+            style: TextInputStyle.Paragraph,
+            maxLength: 400,
+          },
+        ],
+        async (mod) =>
+          this.actionResult({
+            guildId,
+            targetId: user.id,
+            actorId: mod.user.id,
+            source: 'manual',
+            requestKey: mod.id,
+            action: 'note',
+            reason: parseReason(mod.fields.getTextInputValue('reason')),
+          }),
+      );
+      const casesBtn = this.makeButton(
+        interaction,
+        'Full Case History',
+        (btn) => this.history(btn, user.id),
+        false,
+        true,
+      );
+      return {
+        ...embedReply(embed),
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(noteBtn, casesBtn)],
+      };
+    }
     if (name === 'doctor') {
       await this.requirePermission(interaction, P.ManageGuild);
       if (!this.store.available())
@@ -1342,15 +1418,67 @@ export class CommandRouter {
         ],
       };
     }
+    if (name === 'purge' || name === 'lock' || name === 'unlock' || name === 'slowmode') {
+      const channelId = o.getChannel?.('channel')?.id ?? interaction.channelId;
+      const filterUser = o.getUser?.('user')?.id;
+      const request: ActionRequest = {
+        guildId,
+        targetId: filterUser ?? interaction.user.id,
+        actorId: interaction.user.id,
+        source: 'manual',
+        requestKey: interaction.id,
+        action: name,
+        channelId,
+        reason: parseReason(o.getString('reason', true)),
+      };
+      if (name === 'purge') {
+        const count = o.getInteger('count', true);
+        const contains = o.getString?.('contains') ?? undefined;
+        const botsOnly = o.getBoolean?.('bots-only') ?? undefined;
+        const attachmentsOnly = o.getBoolean?.('attachments-only') ?? undefined;
+        request.purgeFilter = {
+          count,
+          ...(filterUser ? { targetId: filterUser } : {}),
+          ...(contains ? { contains } : {}),
+          ...(botsOnly ? { botsOnly } : {}),
+          ...(attachmentsOnly ? { attachmentsOnly } : {}),
+        };
+      }
+      if (name === 'lock') {
+        const dur = o.getString?.('duration');
+        if (dur) request.durationMs = parseDuration(dur, 365);
+      }
+      if (name === 'slowmode') {
+        request.slowmodeSeconds = o.getInteger('seconds', true);
+      }
+      return this.actionResult(request);
+    }
     const action = name.replace('-', '_') as Action;
-    if (!['ban', 'unban', 'kick', 'warn', 'timeout', 'untimeout', 'legacy_unmute'].includes(action))
+    if (
+      ![
+        'ban',
+        'tempban',
+        'softban',
+        'unban',
+        'kick',
+        'warn',
+        'note',
+        'timeout',
+        'untimeout',
+        'legacy_unmute',
+      ].includes(action)
+    )
       throw new UserError('Unknown command. Redeploy the current command definitions.');
     const target =
-      action === 'ban' || action === 'unban'
-        ? o.getString(action === 'ban' ? 'target' : 'user-id', true).replace(/^<@!?(\d+)>$/, '$1')
+      action === 'ban' || action === 'tempban' || action === 'unban'
+        ? o.getString(action === 'unban' ? 'user-id' : 'target', true).replace(/^<@!?(\d+)>$/, '$1')
         : o.getUser('user', true).id;
     if (!snowflake.safeParse(target).success)
       throw new UserError('Use a valid user ID or mention.');
+    const deleteDays =
+      action === 'ban' || action === 'tempban' || action === 'softban'
+        ? (o.getInteger?.('delete-days') ?? null)
+        : null;
     const request: ActionRequest = {
       guildId,
       targetId: target,
@@ -1359,9 +1487,12 @@ export class CommandRouter {
       requestKey: interaction.id,
       action,
       reason: parseReason(o.getString('reason', true)),
+      ...(deleteDays !== null ? { deleteMessageSeconds: deleteDays * 86_400 } : {}),
     };
-    if (action === 'timeout') request.durationMs = parseDuration(o.getString('duration', true));
-    if (action === 'ban' || action === 'kick') {
+    if (action === 'timeout') request.durationMs = parseDuration(o.getString('duration', true), 28);
+    if (action === 'tempban')
+      request.durationMs = parseDuration(o.getString('duration', true), 365);
+    if (action === 'ban' || action === 'tempban' || action === 'softban' || action === 'kick') {
       await this.service.validate(request);
       return {
         ...embedReply(

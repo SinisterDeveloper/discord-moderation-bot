@@ -78,48 +78,163 @@ const commands = [
       .addChannelTypes(ChannelType.GuildText)
       .setRequired(true),
   ),
-  ...(['ban', 'kick', 'warn', 'timeout', 'untimeout', 'legacy-unmute', 'unban'] as const).map(
-    (name) => {
-      const c = base(
-        name,
-        `${name} a member with an auditable reason.`,
-        name === 'ban' || name === 'unban'
-          ? P.BanMembers
-          : name === 'kick'
-            ? P.KickMembers
-            : P.ModerateMembers,
-      );
-      if (name === 'ban' || name === 'unban')
-        c.addStringOption((o) =>
-          o
-            .setName(name === 'ban' ? 'target' : 'user-id')
-            .setDescription('User ID or mention.')
-            .setRequired(true)
-            .setMaxLength(24),
-        );
-      else
-        c.addUserOption((o) =>
-          o.setName('user').setDescription('Target member.').setRequired(true),
-        );
-      if (name === 'timeout')
-        c.addStringOption((o) =>
-          o
-            .setName('duration')
-            .setDescription('For example: 30m, 12h, 7d. Maximum 28d.')
-            .setRequired(true)
-            .setMaxLength(12),
-        );
+  ...(
+    [
+      'ban',
+      'tempban',
+      'softban',
+      'kick',
+      'warn',
+      'note',
+      'timeout',
+      'untimeout',
+      'legacy-unmute',
+      'unban',
+    ] as const
+  ).map((name) => {
+    const c = base(
+      name,
+      name === 'note'
+        ? 'Record a private staff note on a member.'
+        : `${name} a member with an auditable reason.`,
+      name === 'ban' || name === 'tempban' || name === 'softban' || name === 'unban'
+        ? P.BanMembers
+        : name === 'kick'
+          ? P.KickMembers
+          : P.ModerateMembers,
+    );
+    if (name === 'ban' || name === 'tempban' || name === 'unban')
       c.addStringOption((o) =>
         o
-          .setName('reason')
-          .setDescription('Reason for this action.')
+          .setName(name === 'unban' ? 'user-id' : 'target')
+          .setDescription('User ID or mention.')
           .setRequired(true)
-          .setMinLength(1)
-          .setMaxLength(400),
+          .setMaxLength(24),
       );
-      return c;
-    },
-  ),
+    else
+      c.addUserOption((o) => o.setName('user').setDescription('Target member.').setRequired(true));
+    if (name === 'timeout' || name === 'tempban')
+      c.addStringOption((o) =>
+        o
+          .setName('duration')
+          .setDescription(
+            name === 'timeout'
+              ? 'For example: 30m, 12h, 7d. Maximum 28d.'
+              : 'For example: 24h, 7d, 30d. Maximum 365d.',
+          )
+          .setRequired(true)
+          .setMaxLength(12),
+      );
+    c.addStringOption((o) =>
+      o
+        .setName('reason')
+        .setDescription('Reason for this action.')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(400),
+    );
+    if (name === 'ban' || name === 'tempban' || name === 'softban')
+      c.addIntegerOption((o) =>
+        o
+          .setName('delete-days')
+          .setDescription('Days of recent messages to delete (0–7).')
+          .setMinValue(name === 'softban' ? 1 : 0)
+          .setMaxValue(7),
+      );
+    return c;
+  }),
+  base(
+    'whois',
+    'Inspect a user profile, roles, permissions, and moderation summary.',
+    P.ModerateMembers,
+  ).addUserOption((o) => o.setName('user').setDescription('User to inspect.').setRequired(true)),
+  base('purge', 'Bulk delete messages in this channel with filters.', P.ManageMessages)
+    .addIntegerOption((o) =>
+      o
+        .setName('count')
+        .setDescription('Number of recent messages to scan (1–100).')
+        .setRequired(true)
+        .setMinValue(1)
+        .setMaxValue(100),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('reason')
+        .setDescription('Reason for purging messages.')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(400),
+    )
+    .addUserOption((o) => o.setName('user').setDescription('Only delete messages from this user.'))
+    .addStringOption((o) =>
+      o
+        .setName('contains')
+        .setDescription('Only delete messages containing this substring.')
+        .setMaxLength(100),
+    )
+    .addBooleanOption((o) => o.setName('bots-only').setDescription('Only delete bot messages.'))
+    .addBooleanOption((o) =>
+      o.setName('attachments-only').setDescription('Only delete messages with attachments.'),
+    ),
+  base('lock', 'Lock a text channel so regular members cannot send messages.', P.ManageChannels)
+    .addStringOption((o) =>
+      o
+        .setName('reason')
+        .setDescription('Reason for locking the channel.')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(400),
+    )
+    .addChannelOption((o) =>
+      o
+        .setName('channel')
+        .setDescription('Channel to lock (defaults to current channel).')
+        .addChannelTypes(ChannelType.GuildText),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('duration')
+        .setDescription('Optional duration before auto-unlock (e.g. 30m, 2h, 1d).')
+        .setMaxLength(12),
+    ),
+  base('unlock', 'Unlock a locked text channel.', P.ManageChannels)
+    .addStringOption((o) =>
+      o
+        .setName('reason')
+        .setDescription('Reason for unlocking the channel.')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(400),
+    )
+    .addChannelOption((o) =>
+      o
+        .setName('channel')
+        .setDescription('Channel to unlock (defaults to current channel).')
+        .addChannelTypes(ChannelType.GuildText),
+    ),
+  base('slowmode', 'Set the slowmode rate limit for a text channel.', P.ManageChannels)
+    .addIntegerOption((o) =>
+      o
+        .setName('seconds')
+        .setDescription('Rate limit in seconds (0 to disable, max 21600).')
+        .setRequired(true)
+        .setMinValue(0)
+        .setMaxValue(21600),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('reason')
+        .setDescription('Reason for changing slowmode.')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(400),
+    )
+    .addChannelOption((o) =>
+      o
+        .setName('channel')
+        .setDescription('Target channel (defaults to current channel).')
+        .addChannelTypes(ChannelType.GuildText),
+    ),
   base('cases', 'Read a user’s case history.', P.ModerateMembers).addUserOption((o) =>
     o.setName('user').setDescription('User to check.').setRequired(true),
   ),

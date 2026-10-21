@@ -237,6 +237,62 @@ describe('interaction handling', () => {
       expect.objectContaining({ kind: 'reason', value: 'Modal updated reason' }),
     );
   });
+  it('executes /purge, /lock, /slowmode, /note, and /whois commands', async () => {
+    const f = fixture();
+    const client = {
+      guilds: {
+        fetch: async () => ({
+          ownerId: actorId,
+          members: {
+            fetch: async () => ({
+              id: actorId,
+              joinedTimestamp: Date.now() - 86_400_000,
+              roles: { cache: new Map() },
+              permissions: { has: () => true },
+            }),
+          },
+        }),
+      },
+    } as unknown as Client;
+    const service = new ModerationService(f.store, f.discord);
+    const spy = vi.spyOn(service, 'execute');
+    const router = new CommandRouter(client, f.store, service, {
+      memberEvents: false,
+      messageFilter: false,
+    });
+
+    const purgeCmd = {
+      ...interaction('purge'),
+      channelId: '1560181480427225159',
+      options: {
+        getInteger: () => 25,
+        getString: (k: string) => (k === 'reason' ? 'Spam cleanup' : 'http'),
+        getUser: () => ({ id: targetId }),
+        getBoolean: () => true,
+      },
+    };
+    expect(await router.handle(purgeCmd as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'purge',
+        channelId: '1560181480427225159',
+        purgeFilter: expect.objectContaining({ count: 25, targetId, contains: 'http' }),
+      }),
+    );
+
+    const whoisCmd = {
+      ...interaction('whois'),
+      options: {
+        getUser: () => ({
+          id: targetId,
+          username: 'member',
+          createdTimestamp: Date.now() - 10 * 86_400_000,
+        }),
+      },
+    };
+    expect(await router.handle(whoisCmd as unknown as ChatInputCommandInteraction)).toBe(true);
+    expect(whoisCmd.editReply.mock.calls[0]![0].embeds[0].toJSON().title).toBe('Member Dossier');
+  });
 });
 afterEach(() => vi.useRealTimers());
 describe('commands and permissions', () => {
